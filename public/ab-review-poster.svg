@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720" role="img" aria-label="NihonSub A/B review placeholder">
+  <rect width="1280" height="720" fill="#10283d"/>
+  <g transform="translate(64 56)">
+    <rect width="36" height="36" rx="6" fill="#e9bd45"/>
+    <path d="M12 10v16M24 10v16" stroke="#173452" stroke-linecap="round" stroke-width="4"/>
+    <text x="50" y="25" fill="#e5edf0" font-family="system-ui, sans-serif" font-size="22" font-weight="650">NihonSub</text>
+  </g>
+  <path d="M0 668h1280" stroke="#28475d"/>
+  <path d="M0 668h180" stroke="#e9bd45" stroke-width="3"/>
+</svg>

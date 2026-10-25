@@ -8,96 +8,107 @@
   <link rel="stylesheet" href="program-guide.css">
 </head>
 <body>
-  <div class="app-container">
-    <!-- Header -->
-    <header class="app-header">
-      <div class="brand">
+  <header class="site-header">
+    <div class="site-header-inner">
+      <a class="site-brand" href="/" aria-label="NihonSub home">
         <span class="nihon-mark" aria-hidden="true"><i></i><i></i></span>
-        <div>
-          <h1>NihonSub <span class="badge-ja">JP</span></h1>
-          <p class="subtitle">Japanese video subtitler</p>
-        </div>
-      </div>
+        <span class="site-brand-name">NihonSub</span>
+        <span class="brand-jp">JP</span>
+      </a>
       <nav class="primary-nav" aria-label="Main navigation">
         <a class="is-active" href="/" aria-current="page">Subtitler</a>
         <a href="/ab-review.html">A/B experiments</a>
       </nav>
       <div class="header-actions">
-        <button id="activityLogToggleBtn" class="btn btn-ghost" title="View Full Activity Log">
+        <button type="button" id="activityLogToggleBtn" class="btn btn-ghost" title="View activity log">
           Activity log <span id="logBadgeCount" class="badge-mini">0</span>
         </button>
-        <button id="settingsBtn" class="btn btn-ghost" title="Settings & Custom APIs">Settings</button>
+        <button type="button" id="settingsBtn" class="btn btn-ghost" title="Settings and custom APIs">Settings</button>
       </div>
-    </header>
+    </div>
+  </header>
 
-    <!-- Main Content Area -->
+  <div class="app-container">
     <main class="main-content">
+      <header class="page-heading">
+        <h1>Subtitler</h1>
+        <p>Upload a Japanese video to create and review English subtitles.</p>
+      </header>
       
       <!-- STEP 1: Upload Video & Target Language -->
-      <section id="step1Section" class="card step-card">
-        <div class="section-badge">Step 1</div>
-        <h2 class="section-title">Upload Video & Select Subtitle Language</h2>
-        <p class="section-desc">Upload your Japanese video and choose your preferred language for the AI subtitles.</p>
-
-        <!-- Video Upload Dropzone -->
-        <div class="upload-dropzone" id="dropZone">
-          <input type="file" id="videoFileInput" accept="video/mp4,video/x-matroska,video/webm,video/quicktime,video/x-msvideo" hidden>
-          <h3>Select or drop a Japanese video</h3>
-          <p class="dropzone-desc">Supports MP4, MKV, WebM, MOV, AVI (up to 2GB)</p>
-          <button type="button" class="btn btn-primary" id="browseBtn">Browse Video File</button>
-          
-          <div id="fileInfoBox" class="file-info-box hidden">
-            <div class="file-info-main">
-              <span class="file-icon">VIDEO</span>
-              <div>
-                <div class="file-name" id="fileNameDisplay">video.mp4</div>
-                <div class="file-size" id="fileSizeDisplay">0 MB</div>
-              </div>
-            </div>
-            <button type="button" class="btn-clear" id="clearFileBtn" title="Remove file">✕</button>
-          </div>
+      <section id="step1Section" class="card step-card" aria-labelledby="setupTitle">
+        <div class="step-card-heading">
+          <h2 class="section-title" id="setupTitle">Prepare your subtitles</h2>
+          <p class="section-desc">Choose a source video and translation mode before generating the English track.</p>
         </div>
 
-        <!-- Target Language Selector -->
-        <div class="config-row">
-          <div class="config-group">
-            <label class="config-label">Target Subtitle Language:</label>
-            <div class="radio-pill-group">
-              <label class="radio-pill">
-                <input type="radio" name="targetLang" value="en" checked>
-                <span>English subtitles</span>
-              </label>
+        <div class="workflow-grid">
+          <div class="upload-column">
+            <h3 class="workflow-heading">Video source</h3>
+            <p class="workflow-copy">MP4, MKV, WebM, MOV, or AVI · up to 2 GB</p>
+            <!-- Video Upload Dropzone -->
+            <div class="upload-dropzone" id="dropZone">
+              <input type="file" id="videoFileInput" accept="video/mp4,video/x-matroska,video/webm,video/quicktime,video/x-msvideo" hidden>
+              <h3>Select or drop a Japanese video</h3>
+              <p class="dropzone-desc">Supports MP4, MKV, WebM, MOV, AVI (up to 2GB)</p>
+              <button type="button" class="btn btn-primary" id="browseBtn">Browse Video File</button>
+
+              <div id="fileInfoBox" class="file-info-box hidden">
+                <div class="file-info-main">
+                  <span class="file-icon">VIDEO</span>
+                  <div>
+                    <div class="file-name" id="fileNameDisplay">video.mp4</div>
+                    <div class="file-size" id="fileSizeDisplay">0 MB</div>
+                  </div>
+                </div>
+                <button type="button" class="btn-clear" id="clearFileBtn" title="Remove file" aria-label="Remove selected file">
+                  <svg viewBox="0 0 16 16" aria-hidden="true"><path d="m4 4 8 8M12 4l-8 8"/></svg>
+                </button>
+              </div>
             </div>
           </div>
 
-          <!-- Translation Engine Mode Selector (v1 Fast Fallback vs v2 Multi-Model Ensemble) -->
-          <div class="config-row-nested">
-            <div class="config-label-row">
-              <label class="config-label">Translation Pipeline Mode:</label>
-              <span class="badge-tag" id="modeTagBadge">v2 Ensemble Engine</span>
+          <!-- Target Language Selector -->
+          <div class="config-row">
+            <div class="config-group">
+              <label class="config-label">Target Subtitle Language:</label>
+              <div class="radio-pill-group">
+                <label class="radio-pill">
+                  <input type="radio" name="targetLang" value="en" checked>
+                  <span>English subtitles</span>
+                </label>
+              </div>
             </div>
-            <div class="radio-pill-group">
-              <label class="radio-pill">
-                <input type="radio" name="translationMode" value="fallback" checked>
-                <span>Fast Fallback (v1)</span>
-              </label>
-              <label class="radio-pill">
-                <input type="radio" name="translationMode" value="ensemble">
-                <span>Multi-Model Ensemble Voting (v2)</span>
-              </label>
-            </div>
-            <div class="mode-description-box" id="modeDescriptionBox">
-              <span class="mode-desc-icon" id="modeDescIcon">V1</span>
-              <span class="mode-desc-text" id="modeDescText">
-                <strong>Fast Fallback (v1):</strong> Uses your primary translation model and automatically fails over in real-time to backup models if rate limits (429) or timeouts occur.
-              </span>
-            </div>
-          </div>
 
-          <!-- Custom Translation / Agent Notice -->
-          <div class="custom-api-status-row">
-            <span class="text-muted" id="activeTranslatorNotice">Local Parakeet transcription · Qwen translation</span>
-            <button type="button" class="btn-link" id="configureTranslatorLink">Manage Multi-AI Models & Settings</button>
+            <!-- Translation Engine Mode Selector (v1 Fast Fallback vs v2 Multi-Model Ensemble) -->
+            <div class="config-row-nested">
+              <div class="config-label-row">
+                <label class="config-label">Translation Pipeline Mode:</label>
+                <span class="badge-tag" id="modeTagBadge">v2 Ensemble Engine</span>
+              </div>
+              <div class="radio-pill-group">
+                <label class="radio-pill">
+                  <input type="radio" name="translationMode" value="fallback" checked>
+                  <span>Fast Fallback (v1)</span>
+                </label>
+                <label class="radio-pill">
+                  <input type="radio" name="translationMode" value="ensemble">
+                  <span>Multi-Model Ensemble Voting (v2)</span>
+                </label>
+              </div>
+              <div class="mode-description-box" id="modeDescriptionBox">
+                <span class="mode-desc-icon" id="modeDescIcon">V1</span>
+                <span class="mode-desc-text" id="modeDescText">
+                  <strong>Fast Fallback (v1):</strong> Uses your primary translation model and automatically fails over in real-time to backup models if rate limits (429) or timeouts occur.
+                </span>
+              </div>
+            </div>
+
+            <!-- Custom Translation / Agent Notice -->
+            <div class="custom-api-status-row">
+              <span class="text-muted" id="activeTranslatorNotice">Local Parakeet transcription · Qwen translation</span>
+              <button type="button" class="btn-link" id="configureTranslatorLink">Manage Multi-AI Models & Settings</button>
+            </div>
           </div>
         </div>
 
@@ -250,7 +261,9 @@
             <h3>AI Engine Settings & Model Pipeline</h3>
             <p>Configure Speech-to-Text transcription and multi-model Translation fallback chain.</p>
           </div>
-          <button id="closeSettingsBtn" class="btn-clear" title="Close settings">✕</button>
+          <button id="closeSettingsBtn" class="btn-clear" type="button" title="Close settings" aria-label="Close settings">
+            <svg viewBox="0 0 16 16" aria-hidden="true"><path d="m4 4 8 8M12 4l-8 8"/></svg>
+          </button>
         </div>
 
         <!-- Navigation Tabs -->
@@ -397,7 +410,9 @@
             <h3>Backend Activity & Pipeline History</h3>
             <span id="modalLogCount" class="badge-mini">0 entries</span>
           </div>
-          <button id="closeLogModalBtn" class="btn-clear">✕</button>
+          <button id="closeLogModalBtn" class="btn-clear" type="button" aria-label="Close activity log">
+            <svg viewBox="0 0 16 16" aria-hidden="true"><path d="m4 4 8 8M12 4l-8 8"/></svg>
+          </button>
         </div>
         <div class="modal-body log-modal-body">
           <div class="activity-log-toolbar">
@@ -426,7 +441,9 @@
             <h3>Multi-Model Candidate Inspector</h3>
             <span id="inspectorSegmentIdBadge" class="badge-mini">Segment #1</span>
           </div>
-          <button id="closeInspectorBtn" class="btn-clear" title="Close inspector">✕</button>
+          <button id="closeInspectorBtn" class="btn-clear" type="button" title="Close inspector" aria-label="Close inspector">
+            <svg viewBox="0 0 16 16" aria-hidden="true"><path d="m4 4 8 8M12 4l-8 8"/></svg>
+          </button>
         </div>
 
         <div class="modal-body candidate-modal-body">

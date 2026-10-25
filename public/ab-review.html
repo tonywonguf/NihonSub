@@ -10,117 +10,127 @@
 </head>
 <body class="ab-review-page">
   <header class="site-header">
-    <a class="site-brand" href="/" aria-label="NihonSub subtitler home">
-      <span class="nihon-mark" aria-hidden="true"><i></i><i></i></span>
-      <span>NihonSub</span>
-      <span class="brand-jp">JP</span>
-    </a>
-    <nav class="primary-nav" aria-label="Main navigation">
-      <a href="/">Subtitler</a>
-      <a class="is-active" href="/ab-review.html" aria-current="page">A/B experiments</a>
-    </nav>
+    <div class="site-header-inner">
+      <a class="site-brand" href="/" aria-label="NihonSub home">
+        <span class="nihon-mark" aria-hidden="true"><i></i><i></i></span>
+        <span class="site-brand-name">NihonSub</span>
+        <span class="brand-jp">JP</span>
+      </a>
+      <nav class="primary-nav" aria-label="Main navigation">
+        <a href="/">Subtitler</a>
+        <a class="is-active" href="/ab-review.html" aria-current="page">A/B experiments</a>
+      </nav>
+      <div class="header-actions">
+        <button class="btn btn-ghost" id="refreshExperiments" type="button" aria-label="Refresh saved experiments">Refresh</button>
+      </div>
+    </div>
   </header>
 
   <main class="review-shell">
-    <section class="page-intro" aria-labelledby="page-title">
+    <header class="page-intro" aria-labelledby="page-title">
       <div>
-        <h1 id="page-title">Review subtitle A/B</h1>
-        <p>One video; A above B; shared timing.</p>
+        <h1 id="page-title">A/B experiments</h1>
+        <p>Compare subtitle variants against the same video.</p>
       </div>
-      <button class="plain-button" id="refreshExperiments" type="button" aria-label="Refresh saved experiments">Refresh</button>
-    </section>
+    </header>
 
-    <section class="saved-experiments" aria-labelledby="saved-title">
-      <div class="section-heading">
-        <h2 id="saved-title">Saved experiments</h2>
-        <span id="experimentCount" class="section-count"></span>
-      </div>
-      <div id="experimentList" class="experiment-list" aria-live="polite">
-        <p class="loading-note">Loading saved experiments…</p>
-      </div>
-    </section>
-
-    <p id="pageStatus" class="page-status" role="status" aria-live="polite"></p>
-
-    <section id="selectedExperiment" class="selected-experiment hidden" aria-labelledby="selectedTitle">
-      <div class="selected-heading">
-        <div>
-          <h2 id="selectedTitle"></h2>
-          <p id="selectedSource" class="selected-source"></p>
-          <p id="experimentResult" class="result-line selected-result"></p>
-        </div>
-        <span id="selectedState" class="run-state"></span>
-      </div>
-      <details class="experiment-details">
-        <summary>Test purpose and before/after</summary>
-        <div class="experiment-facts">
-        <div class="fact">
-          <h3>What it tests</h3>
-          <p id="experimentWhat"></p>
-        </div>
-        <div class="fact">
-          <h3>Why</h3>
-          <p id="experimentWhy"></p>
-        </div>
-        <div class="fact">
-          <h3>Before → after</h3>
-          <p id="experimentBeforeAfter"></p>
-        </div>
-        </div>
-      </details>
-    </section>
-
-    <section class="cinema-section" aria-labelledby="cinema-title">
-      <div class="cinema-heading">
-        <h2 id="cinema-title">Shared playback</h2>
-        <span id="videoTime" class="time-readout">00:00.00</span>
-      </div>
-      <div class="video-frame">
-        <video id="reviewVideo" controls playsinline preload="metadata" aria-label="Shared A/B comparison video"></video>
-        <div id="captionA" class="video-caption caption-a" aria-hidden="true" hidden>
-          <span class="caption-label">A · BEFORE</span>
-          <span id="captionTextA" class="caption-copy"></span>
-        </div>
-        <div id="captionB" class="video-caption caption-b" aria-hidden="true" hidden>
-          <span class="caption-label">B · AFTER</span>
-          <span id="captionTextB" class="caption-copy"></span>
-        </div>
-        <p id="videoMessage" class="video-message">Choose a saved experiment to load its video and subtitle tracks.</p>
-      </div>
-      <div class="time-rail-row">
-        <span id="railCurrentTime" class="time-readout">00:00.00</span>
-        <div id="timeRail" class="time-rail" role="progressbar" aria-label="Shared video playhead" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
-          <span id="timePlayhead" class="time-playhead"></span>
-        </div>
-        <span id="videoDuration" class="time-readout">--:--.--</span>
-      </div>
-    </section>
-
-    <section class="transcript-section" aria-labelledby="transcript-title">
-      <div class="section-heading transcript-heading">
-        <div>
-          <h2 id="transcript-title">Aligned transcript cues</h2>
-          <p>Each track keeps its own timing. Select a cue to seek the shared video.</p>
-        </div>
-        <span id="transcriptStatus" class="transcript-status"></span>
-      </div>
-      <div class="transcript-grid">
-        <section class="track-column track-a" aria-labelledby="trackATitle">
-          <div class="track-heading">
-            <h3 id="trackATitle">A <span>Before · baseline</span></h3>
-            <span id="countA" class="track-count">0 cues</span>
+    <div class="review-workspace">
+      <aside class="experiment-rail" aria-label="Saved A/B experiments">
+        <section class="saved-experiments" aria-labelledby="saved-title">
+          <div class="section-heading">
+            <h2 id="saved-title">Saved experiments</h2>
+            <span id="experimentCount" class="section-count"></span>
           </div>
-          <ol id="trackAList" class="cue-list" aria-label="A baseline subtitle cues"></ol>
-        </section>
-        <section class="track-column track-b" aria-labelledby="trackBTitle">
-          <div class="track-heading">
-            <h3 id="trackBTitle">B <span>After · candidate</span></h3>
-            <span id="countB" class="track-count">0 cues</span>
+          <div id="experimentList" class="experiment-list" aria-live="polite">
+            <p class="loading-note">Loading saved experiments…</p>
           </div>
-          <ol id="trackBList" class="cue-list" aria-label="B candidate subtitle cues"></ol>
+        </section>
+
+        <p id="pageStatus" class="page-status" role="status" aria-live="polite"></p>
+
+        <section id="selectedExperiment" class="selected-experiment hidden" aria-labelledby="selectedTitle">
+          <div class="selected-heading">
+            <div>
+              <h2 id="selectedTitle"></h2>
+              <p id="selectedSource" class="selected-source"></p>
+              <p id="experimentResult" class="result-line selected-result"></p>
+            </div>
+            <span id="selectedState" class="run-state"></span>
+          </div>
+          <details class="experiment-details">
+            <summary>Test purpose and before/after</summary>
+            <div class="experiment-facts">
+              <div class="fact">
+                <h3>What it tests</h3>
+                <p id="experimentWhat"></p>
+              </div>
+              <div class="fact">
+                <h3>Why</h3>
+                <p id="experimentWhy"></p>
+              </div>
+              <div class="fact">
+                <h3>Before → after</h3>
+                <p id="experimentBeforeAfter"></p>
+              </div>
+            </div>
+          </details>
+        </section>
+      </aside>
+
+      <div class="review-stage">
+        <section class="cinema-section" aria-labelledby="cinema-title">
+          <div class="cinema-heading">
+            <h2 id="cinema-title">Shared playback</h2>
+            <span id="videoTime" class="time-readout hidden">00:00.00</span>
+          </div>
+          <div class="video-frame">
+            <video id="reviewVideo" poster="ab-review-poster.svg" playsinline preload="metadata" aria-label="Shared A/B comparison video"></video>
+            <div id="captionA" class="video-caption caption-a" aria-hidden="true" hidden>
+              <span class="caption-label">A · BEFORE</span>
+              <span id="captionTextA" class="caption-copy"></span>
+            </div>
+            <div id="captionB" class="video-caption caption-b" aria-hidden="true" hidden>
+              <span class="caption-label">B · AFTER</span>
+              <span id="captionTextB" class="caption-copy"></span>
+            </div>
+            <p id="videoMessage" class="video-message">Choose a saved experiment to compare its subtitle tracks here.</p>
+          </div>
+          <div class="time-rail-row hidden">
+            <span id="railCurrentTime" class="time-readout">00:00.00</span>
+            <div id="timeRail" class="time-rail" role="progressbar" aria-label="Shared video playhead" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+              <span id="timePlayhead" class="time-playhead"></span>
+            </div>
+            <span id="videoDuration" class="time-readout">--:--.--</span>
+          </div>
+        </section>
+
+        <section class="transcript-section" aria-labelledby="transcript-title">
+          <div class="section-heading transcript-heading">
+            <div>
+              <h2 id="transcript-title">Aligned transcript cues</h2>
+              <p>Each track keeps its own timing. Select a cue to seek the shared video.</p>
+            </div>
+            <span id="transcriptStatus" class="transcript-status"></span>
+          </div>
+          <div class="transcript-grid">
+            <section class="track-column track-a" aria-labelledby="trackATitle">
+              <div class="track-heading">
+                <h3 id="trackATitle">A <span>Before · baseline</span></h3>
+                <span id="countA" class="track-count">0 cues</span>
+              </div>
+              <ol id="trackAList" class="cue-list" aria-label="A baseline subtitle cues"></ol>
+            </section>
+            <section class="track-column track-b" aria-labelledby="trackBTitle">
+              <div class="track-heading">
+                <h3 id="trackBTitle">B <span>After · candidate</span></h3>
+                <span id="countB" class="track-count">0 cues</span>
+              </div>
+              <ol id="trackBList" class="cue-list" aria-label="B candidate subtitle cues"></ol>
+            </section>
+          </div>
         </section>
       </div>
-    </section>
+    </div>
   </main>
   <script type="module" src="ab-review.js"></script>
 </body>
