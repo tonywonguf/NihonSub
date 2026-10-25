@@ -14,7 +14,7 @@
       <div class="brand">
         <span class="nihon-mark" aria-hidden="true"><i></i><i></i></span>
         <div>
-          <h1>NihonSub <span class="badge-ja">日本サブ</span></h1>
+          <h1>NihonSub <span class="badge-ja">JP</span></h1>
           <p class="subtitle">Japanese video subtitler</p>
         </div>
       </div>
@@ -48,7 +48,7 @@
           
           <div id="fileInfoBox" class="file-info-box hidden">
             <div class="file-info-main">
-              <span class="file-icon">📹</span>
+              <span class="file-icon">VIDEO</span>
               <div>
                 <div class="file-name" id="fileNameDisplay">video.mp4</div>
                 <div class="file-size" id="fileSizeDisplay">0 MB</div>
@@ -65,7 +65,7 @@
             <div class="radio-pill-group">
               <label class="radio-pill">
                 <input type="radio" name="targetLang" value="en" checked>
-                <span>🇬🇧 English subtitles</span>
+                <span>English subtitles</span>
               </label>
             </div>
           </div>
@@ -79,11 +79,11 @@
             <div class="radio-pill-group">
               <label class="radio-pill">
                 <input type="radio" name="translationMode" value="fallback" checked>
-                <span>⚡ Fast Fallback (v1)</span>
+                <span>Fast Fallback (v1)</span>
               </label>
               <label class="radio-pill">
                 <input type="radio" name="translationMode" value="ensemble">
-                <span>🏆 Multi-Model Ensemble Voting (v2)</span>
+                <span>Multi-Model Ensemble Voting (v2)</span>
               </label>
             </div>
             <div class="mode-description-box" id="modeDescriptionBox">
@@ -97,7 +97,7 @@
           <!-- Custom Translation / Agent Notice -->
           <div class="custom-api-status-row">
             <span class="text-muted" id="activeTranslatorNotice">Local Parakeet transcription · Qwen translation</span>
-            <button type="button" class="btn-link" id="configureTranslatorLink">Manage Multi-AI Models & Settings ➔</button>
+            <button type="button" class="btn-link" id="configureTranslatorLink">Manage Multi-AI Models & Settings</button>
           </div>
         </div>
 
@@ -173,10 +173,10 @@
             <div class="sub-ctrl-group style-group">
               <label for="subStyleSelect">Style:</label>
               <select id="subStyleSelect" class="styled-select">
-                <option value="transparent" selected>✨ Transparent (Cinema)</option>
-                <option value="capsule">🏷️ Dark Capsule</option>
-                <option value="classic">⬛ Classic Box</option>
-                <option value="off">🚫 Off (Hidden)</option>
+                <option value="transparent" selected>Transparent (Cinema)</option>
+                <option value="capsule">Dark Capsule</option>
+                <option value="classic">Classic Box</option>
+                <option value="off">Off (Hidden)</option>
               </select>
             </div>
 
@@ -191,23 +191,23 @@
 
             <div class="sub-ctrl-group downloads-group">
               <a id="downloadSrtBtn" class="btn btn-sm btn-secondary" title="Download SubRip SRT" download="subtitles.srt" href="#">
-                📥 .SRT
+                .SRT
               </a>
               <a id="downloadVttBtn" class="btn btn-sm btn-secondary" title="Download WebVTT" download="subtitles.vtt" href="#">
-                📥 .VTT
+                .VTT
               </a>
               <button id="sendToTranslatorBtn" class="btn btn-sm btn-outline" title="Send transcript to custom translator/API">
-                🔄 Re-translate with Custom API
+                Re-translate with Custom API
               </button>
               <button id="startOverBtn" class="btn btn-sm btn-ghost" title="Process another video">
-                🔄 New Video
+                New Video
               </button>
             </div>
           </div>
 
           <!-- Shortcuts Tip -->
           <div class="shortcuts-tip">
-            <span>⌨️ <b>Space:</b> Play/Pause</span>
+            <span><b>Space:</b> Play/Pause</span>
             <span><b>←/→:</b> Seek ±5s</span>
             <span><b>↑/↓:</b> Volume</span>
             <span><b>F:</b> Fullscreen</span>
@@ -232,7 +232,7 @@
               <div class="empty-state">No subtitles generated yet.</div>
             </div>
             <button id="resumeAutoScrollBtn" class="resume-scroll-pill hidden" title="Resume following video playback">
-              <span>▶</span> Resume Auto-Scroll
+              Resume Auto-Scroll
             </button>
           </div>
         </aside>
@@ -247,7 +247,7 @@
         <!-- Header -->
         <div class="settings-modal-header">
           <div class="settings-modal-title">
-            <h3>⚙️ AI Engine Settings & Model Pipeline</h3>
+            <h3>AI Engine Settings & Model Pipeline</h3>
             <p>Configure Speech-to-Text transcription and multi-model Translation fallback chain.</p>
           </div>
           <button id="closeSettingsBtn" class="btn-clear" title="Close settings">✕</button>
@@ -256,10 +256,10 @@
         <!-- Navigation Tabs -->
         <div class="settings-tabs-nav">
           <button type="button" class="settings-tab-btn active" id="tabBtnTranscription" data-tab="transcription">
-            🎙️ Speech-to-Text (Transcription)
+            Speech-to-Text (Transcription)
           </button>
           <button type="button" class="settings-tab-btn" id="tabBtnTranslation" data-tab="translation">
-            🌐 Translation Fallback Chain
+            Translation Fallback Chain
             <span id="tabProviderCount" class="tab-count-badge">1</span>
           </button>
         </div>
@@ -270,7 +270,7 @@
           <!-- TAB PANE 1: TRANSCRIPTION (SPEECH-TO-TEXT) -->
           <div id="tabPaneTranscription" class="settings-panel">
             <div class="callout-box">
-              <span class="callout-icon">🎙️</span>
+              <span class="callout-icon">ASR</span>
               <div>
                 <strong>Japanese Audio Speech Recognition (ASR):</strong>
                 Transcribe Japanese audio into timestamped dialogue with Groq Whisper, an OpenAI-compatible endpoint, or local NVIDIA Parakeet (CPU inference).
@@ -280,10 +280,10 @@
             <div class="settings-section-card">
               <div class="preset-chips">
                 <span style="font-size:0.8rem; color:var(--text-muted);">Quick Presets:</span>
-                <button type="button" class="btn-chip" id="presetGroqWhisperBtn">⚡ Groq Whisper Large-v3</button>
-                <button type="button" class="btn-chip" id="presetOpenAIWhisperBtn">🌐 OpenAI Whisper-1</button>
-                <button type="button" class="btn-chip" id="presetLocalWhisperBtn">💻 Local Whisper / Endpoint</button>
-                <button type="button" class="btn-chip" id="presetParakeetBtn">🦜 Local Parakeet Japanese</button>
+                <button type="button" class="btn-chip" id="presetGroqWhisperBtn">Groq Whisper Large-v3</button>
+                <button type="button" class="btn-chip" id="presetOpenAIWhisperBtn">OpenAI Whisper-1</button>
+                <button type="button" class="btn-chip" id="presetLocalWhisperBtn">Local Whisper / Endpoint</button>
+                <button type="button" class="btn-chip" id="presetParakeetBtn">Local Parakeet Japanese</button>
               </div>
 
               <div class="settings-grid-2col">
@@ -303,14 +303,14 @@
                 <label for="transcriptionApiKeyInput">Transcription API Key</label>
                 <div class="password-input-wrap">
                   <input type="password" id="transcriptionApiKeyInput" placeholder="gsk_... or sk-..." class="styled-input">
-                  <button type="button" class="btn-toggle-eye" id="toggleTransKeyEye" title="Show/Hide Key">👁️</button>
+                  <button type="button" class="btn-toggle-eye" id="toggleTransKeyEye" title="Show API key">Show</button>
                 </div>
                 <small class="help-text">Not needed for local Parakeet. Other services may require a key.</small>
               </div>
 
               <div class="provider-card-footer">
                 <button type="button" id="testTranscriptionBtn" class="btn btn-secondary">
-                  🧪 Test Speech Recognition Connection
+                  Test Speech Recognition Connection
                 </button>
                 <div id="transcriptionTestStatus" class="provider-test-status hidden"></div>
               </div>
@@ -322,7 +322,7 @@
             <!-- Mode preference selector in settings -->
             <div class="settings-mode-card">
               <div class="mode-card-header">
-                <span class="mode-card-icon">🏆</span>
+                <span class="mode-card-icon">V2</span>
                 <div>
                   <strong>Default Translation Engine Mode:</strong>
                   <p class="text-muted" style="margin: 0.2rem 0 0; font-size: 0.85rem;">Choose between single-model sequential fallback and parallel multi-model ensemble voting.</p>
@@ -331,17 +331,17 @@
               <div class="radio-pill-group" style="margin-top: 0.75rem;">
                 <label class="radio-pill">
                   <input type="radio" name="settingsTranslationMode" value="fallback" checked>
-                  <span>⚡ Fast Fallback (v1)</span>
+                  <span>Fast Fallback (v1)</span>
                 </label>
                 <label class="radio-pill">
                   <input type="radio" name="settingsTranslationMode" value="ensemble">
-                  <span>🏆 Multi-Model Ensemble Voting (v2)</span>
+                  <span>Multi-Model Ensemble Voting (v2)</span>
                 </label>
               </div>
             </div>
 
             <div class="callout-box">
-              <span class="callout-icon">🔄</span>
+              <span class="callout-icon">FLOW</span>
               <div>
                 <strong>Multi-Model Architecture:</strong>
                 In <strong>Ensemble Mode (v2)</strong>, all models below are queried simultaneously, voting on every line to eliminate hallucinations. In <strong>Fallback Mode (v1)</strong>, Provider #1 translates and NihonSub automatically fails over to Provider #2 if rate limits occur.
@@ -377,12 +377,12 @@
         <div class="settings-modal-footer">
           <div class="footer-left-group">
             <button type="button" id="resetDefaultsBtn" class="btn btn-ghost btn-sm" title="Reset all settings to recommended defaults">
-              🔄 Reset Defaults
+              Reset Defaults
             </button>
           </div>
           <div class="footer-right-group">
             <button type="button" id="closeSettingsFooterBtn" class="btn btn-outline">Close</button>
-            <button type="button" id="saveSettingsBtn" class="btn btn-primary">💾 Save Settings</button>
+            <button type="button" id="saveSettingsBtn" class="btn btn-primary">Save Settings</button>
           </div>
         </div>
 
@@ -423,7 +423,7 @@
       <div class="modal-card candidate-modal-card">
         <div class="modal-header">
           <div class="modal-title-with-badge">
-            <h3>🏆 Multi-Model Candidate Inspector</h3>
+            <h3>Multi-Model Candidate Inspector</h3>
             <span id="inspectorSegmentIdBadge" class="badge-mini">Segment #1</span>
           </div>
           <button id="closeInspectorBtn" class="btn-clear" title="Close inspector">✕</button>
@@ -433,19 +433,19 @@
           <!-- Segment Dialogue Context -->
           <div class="inspector-context-card">
             <div class="inspector-context-row">
-              <span class="context-label">⏱️ Timestamp Slot:</span>
-              <span class="context-value" id="inspectorTimeSlot">00:00.000 ➔ 00:02.500</span>
+              <span class="context-label">Timestamp Slot:</span>
+              <span class="context-value" id="inspectorTimeSlot">00:00.000–00:02.500</span>
             </div>
             <div class="inspector-context-row">
-              <span class="context-label">🇯🇵 Spoken Japanese:</span>
+              <span class="context-label">Spoken Japanese:</span>
               <span class="context-value ja-text" id="inspectorJaText">待って！</span>
             </div>
             <div class="inspector-context-row" id="inspectorAcousticRow">
-              <span class="context-label">🎧 Acoustic Audio (Channel B):</span>
+              <span class="context-label">Acoustic Audio (Channel B):</span>
               <span class="context-value audio-text" id="inspectorAcousticText">"Wait for me!"</span>
             </div>
             <div class="inspector-consensus-summary">
-              <span class="consensus-badge" id="inspectorConsensusBadge">🗳️ 3 of 3 Models Agreed (100% Consensus)</span>
+              <span class="consensus-badge" id="inspectorConsensusBadge">3 of 3 Models Agreed (100% Consensus)</span>
             </div>
           </div>
 
