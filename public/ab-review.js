@@ -22,22 +22,41 @@ const captionA = document.getElementById('captionA');
 const captionB = document.getElementById('captionB');
 const captionTextA = document.getElementById('captionTextA');
 const captionTextB = document.getElementById('captionTextB');
+const captionReference = document.getElementById('captionReference');
+const captionTextReference = document.getElementById('captionTextReference');
 const trackAList = document.getElementById('trackAList');
 const trackBList = document.getElementById('trackBList');
+const trackReferenceColumn = document.getElementById('referenceTrackColumn');
+const trackReferenceList = document.getElementById('trackReferenceList');
 const countA = document.getElementById('countA');
 const countB = document.getElementById('countB');
+const countReference = document.getElementById('countReference');
+const transcriptGrid = document.querySelector('.transcript-grid');
+const referenceStatus = document.getElementById('referenceStatus');
+const referenceForm = document.getElementById('referenceForm');
+const referenceFile = document.getElementById('referenceFile');
+const referenceOffset = document.getElementById('referenceOffset');
+const referenceUploadStatus = document.getElementById('referenceUploadStatus');
+const attachReference = document.getElementById('attachReference');
+const playbackTrack = document.getElementById('playbackTrack');
+const referenceTrackOption = playbackTrack.querySelector('option[value="reference"]');
 const transcriptStatus = document.getElementById('transcriptStatus');
 
 let runs = [];
 let activeRunId = null;
 let aSegments = [];
 let bSegments = [];
+let referenceSegments = [];
 let selectionVersion = 0;
 
 async function fetchJson(url) {
   const response = await fetch(url);
   const data = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(data.error || `Request failed (${response.status}).`);
+  if (!response.ok) {
+    const error = new Error(data.error || `Request failed (${response.status}).`);
+    error.status = response.status;
+    throw error;
+  }
   return data;
 }
 
@@ -148,6 +167,8 @@ function updatePlayback() {
   const progress = duration > 0 ? Math.min(100, (currentTime / duration) * 100) : 0;
   const activeA = getActiveCue(aSegments, currentTime);
   const activeB = getActiveCue(bSegments, currentTime);
+  const activeReference = getActiveCue(referenceSegments, currentTime);
+  const showReference = playbackTrack.value === 'reference' && referenceSegments.length > 0;
 
   videoTime.textContent = formatTime(currentTime);
   railCurrentTime.textContent = formatTime(currentTime);
@@ -155,24 +176,39 @@ function updatePlayback() {
   timePlayhead.style.left = `${progress}%`;
   timeRail.setAttribute('aria-valuenow', String(Math.round(progress)));
 
-  captionA.hidden = !activeA;
-  captionB.hidden = !activeB;
+  captionA.hidden = showReference || !activeA;
+  captionB.hidden = showReference || !activeB;
+  captionReference.hidden = !showReference || !activeReference;
   captionTextA.textContent = activeA?.text || '';
   captionTextB.textContent = activeB?.text || '';
+  captionTextReference.textContent = activeReference?.text || '';
   updateTrack(trackAList, aSegments, activeA);
   updateTrack(trackBList, bSegments, activeB);
+  updateTrack(trackReferenceList, referenceSegments, activeReference);
 }
 
 function clearComparison() {
   aSegments = [];
   bSegments = [];
+  referenceSegments = [];
   renderTrack(trackAList, aSegments, 'A');
   renderTrack(trackBList, bSegments, 'B');
+  renderTrack(trackReferenceList, referenceSegments, 'Reference');
   countA.textContent = '0 cues';
   countB.textContent = '0 cues';
+  countReference.textContent = '0 cues';
+  transcriptGrid.classList.remove('has-reference');
+  trackReferenceColumn.hidden = true;
+  referenceTrackOption.disabled = true;
+  playbackTrack.value = 'both';
+  referenceStatus.textContent = 'No reference attached.';
+  referenceFile.value = '';
+  referenceOffset.value = '0';
+  referenceUploadStatus.textContent = '';
   transcriptStatus.textContent = '';
   captionA.hidden = true;
   captionB.hidden = true;
+  captionReference.hidden = true;
   reviewVideo.pause();
   reviewVideo.removeAttribute('src');
   reviewVideo.load();
@@ -202,14 +238,26 @@ async function selectExperiment(run) {
 
   try {
     const runId = encodeURIComponent(run.jobId);
-    const [a, b] = await Promise.all([
+    const [a, b, reference] = await Promise.all([
       fetchJson(`/api/runs/${runId}/checkpoint/ab_a`),
-      fetchJson(`/api/runs/${runId}/checkpoint/ab_b`)
+      fetchJson(`/api/runs/${runId}/checkpoint/ab_b`),
+      fetchJson(`/api/runs/${runId}/checkpoint/ab_reference`).catch(error => {
+        if (error.status === 404) return null;
+        throw error;
+      })
     ]);
     if (version !== selectionVersion) return;
 
     aSegments = Array.isArray(a.segments) ? a.segments : [];
     bSegments = Array.isArray(b.segments) ? b.segments : [];
+    referenceSegments = Array.isArray(reference?.segments) ? reference.segments : [];
+    trackReferenceColumn.hidden = !reference;
+    transcriptGrid.classList.toggle('has-reference', Boolean(reference));
+    referenceTrackOption.disabled = !reference;
+    referenceOffset.value = String(reference?.offsetSeconds ?? 0);
+    referenceStatus.textContent = reference
+      ? `${reference.fileName || 'Reference file'} · ${referenceSegments.length} cues · offset ${reference.offsetSeconds >= 0 ? '+' : ''}${reference.offsetSeconds}s`
+      : 'No reference attached.';
     const loadedSummary = summarizeExperiment(run, aSegments, bSegments);
     experimentResult.textContent = loadedSummary.result;
     countA.textContent = `${aSegments.length} ${aSegments.length === 1 ? 'cue' : 'cues'}`;
@@ -217,6 +265,8 @@ async function selectExperiment(run) {
     transcriptStatus.textContent = `${aSegments.length} A cues · ${bSegments.length} B cues`;
     renderTrack(trackAList, aSegments, 'A');
     renderTrack(trackBList, bSegments, 'B');
+    countReference.textContent = `${referenceSegments.length} ${referenceSegments.length === 1 ? 'cue' : 'cues'}`;
+    renderTrack(trackReferenceList, referenceSegments, 'Reference');
 
     const videoJobId = run.metadata?.videoJobId;
     if (videoJobId) {
@@ -273,7 +323,7 @@ async function loadExperiments() {
   }
 }
 
-for (const list of [trackAList, trackBList]) {
+for (const list of [trackAList, trackBList, trackReferenceList]) {
   list.addEventListener('click', event => {
     const button = event.target.closest('.cue-jump');
     if (!button) return;
@@ -281,6 +331,38 @@ for (const list of [trackAList, trackBList]) {
     updatePlayback();
   });
 }
+
+playbackTrack.addEventListener('change', updatePlayback);
+referenceForm.addEventListener('submit', async event => {
+  event.preventDefault();
+  const file = referenceFile.files?.[0];
+  if (!activeRunId || !file) return;
+
+  const runId = activeRunId;
+  const version = selectionVersion;
+  const formData = new FormData();
+  formData.append('file', file);
+  formData.append('offsetSeconds', referenceOffset.value || '0');
+  attachReference.disabled = true;
+  referenceUploadStatus.textContent = 'Attaching reference subtitles…';
+
+  try {
+    const response = await fetch(`/api/runs/${encodeURIComponent(runId)}/reference-subtitles`, {
+      method: 'POST',
+      body: formData
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.error || `Request failed (${response.status}).`);
+    if (version !== selectionVersion) return;
+
+    await selectExperiment(runs.find(run => run.jobId === runId));
+    referenceUploadStatus.textContent = `${data.fileName} attached for comparison.`;
+  } catch (error) {
+    if (version === selectionVersion) referenceUploadStatus.textContent = error.message;
+  } finally {
+    attachReference.disabled = false;
+  }
+});
 
 reviewVideo.addEventListener('timeupdate', updatePlayback);
 reviewVideo.addEventListener('seeked', updatePlayback);
