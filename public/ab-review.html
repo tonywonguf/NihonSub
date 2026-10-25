@@ -74,6 +74,26 @@
               </div>
             </div>
           </details>
+          <section class="reference-panel" aria-labelledby="referenceTitle">
+            <div class="reference-heading">
+              <div>
+                <h3 id="referenceTitle">Reference subtitles</h3>
+                <p>Optional comparison track only; it will not change translation prompts or outputs.</p>
+              </div>
+              <span id="referenceStatus" class="reference-status" role="status">No reference attached.</span>
+            </div>
+            <form id="referenceForm" class="reference-form">
+              <label for="referenceFile">Subtitle file (.srt or .vtt)
+                <input id="referenceFile" name="file" type="file" accept=".srt,.vtt,text/vtt,application/x-subrip" required>
+              </label>
+              <label for="referenceOffset">Time offset (seconds)
+                <input id="referenceOffset" name="offsetSeconds" type="number" step="0.001" value="0">
+                <span class="field-help">Positive shifts cues later; negative shifts them earlier.</span>
+              </label>
+              <button id="attachReference" class="btn btn-secondary" type="submit">Attach reference</button>
+            </form>
+            <p id="referenceUploadStatus" class="reference-upload-status" role="status" aria-live="polite"></p>
+          </section>
         </section>
       </aside>
 
@@ -82,6 +102,14 @@
           <div class="cinema-heading">
             <h2 id="cinema-title">Shared playback</h2>
             <span id="videoTime" class="time-readout hidden">00:00.00</span>
+          </div>
+          <div class="playback-track-row">
+            <label for="playbackTrack">Playback track</label>
+            <select id="playbackTrack">
+              <option value="both">A + B comparison</option>
+              <option value="reference" disabled>Reference</option>
+            </select>
+            <span>Choose Reference to view the attached subtitles over the video.</span>
           </div>
           <div class="video-frame">
             <video id="reviewVideo" poster="ab-review-poster.svg" playsinline preload="metadata" aria-label="Shared A/B comparison video"></video>
@@ -92,6 +120,10 @@
             <div id="captionB" class="video-caption caption-b" aria-hidden="true" hidden>
               <span class="caption-label">B · AFTER</span>
               <span id="captionTextB" class="caption-copy"></span>
+            </div>
+            <div id="captionReference" class="video-caption caption-reference" aria-hidden="true" hidden>
+              <span class="caption-label">REFERENCE</span>
+              <span id="captionTextReference" class="caption-copy"></span>
             </div>
             <p id="videoMessage" class="video-message">Choose a saved experiment to compare its subtitle tracks here.</p>
           </div>
@@ -126,6 +158,13 @@
                 <span id="countB" class="track-count">0 cues</span>
               </div>
               <ol id="trackBList" class="cue-list" aria-label="B candidate subtitle cues"></ol>
+            </section>
+            <section id="referenceTrackColumn" class="track-column track-reference" aria-labelledby="trackReferenceTitle" hidden>
+              <div class="track-heading">
+                <h3 id="trackReferenceTitle">Reference</h3>
+                <span id="countReference" class="track-count">0 cues</span>
+              </div>
+              <ol id="trackReferenceList" class="cue-list" aria-label="Reference subtitle cues"></ol>
             </section>
           </div>
         </section>

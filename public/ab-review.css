@@ -310,6 +310,108 @@
   white-space: nowrap;
 }
 
+.reference-panel {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.reference-heading {
+  display: grid;
+  gap: 7px;
+}
+
+.reference-heading h3 {
+  margin: 0;
+  color: var(--text-main);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.reference-heading p,
+.field-help {
+  margin: 4px 0 0;
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.reference-status {
+  color: var(--text-muted);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.reference-form {
+  display: grid;
+  gap: 10px;
+  margin-top: 11px;
+}
+
+.reference-form label {
+  display: grid;
+  gap: 5px;
+  color: var(--text-main);
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.reference-form input {
+  width: 100%;
+  min-width: 0;
+  min-height: 40px;
+  padding: 6px 8px;
+  border: 1px solid var(--border-highlight);
+  border-radius: 6px;
+  background: #ffffff;
+  color: var(--text-main);
+  font: inherit;
+}
+
+.reference-form input[type="number"] {
+  font-variant-numeric: tabular-nums;
+}
+
+.reference-form .btn-secondary {
+  min-height: 40px;
+}
+
+.reference-upload-status {
+  min-height: 1.2em;
+  margin: 6px 0 0;
+  color: #12645f;
+  font-size: 12px;
+}
+
+.playback-track-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  margin-bottom: 10px;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.playback-track-row label {
+  color: var(--text-main);
+  font-weight: 650;
+}
+
+.playback-track-row select {
+  min-height: 40px;
+  padding: 6px 10px;
+  border: 1px solid var(--border-highlight);
+  border-radius: 6px;
+  background: #ffffff;
+  color: var(--text-main);
+  font: inherit;
+}
+
+.playback-track-row span {
+  font-size: 12px;
+}
+
 .video-frame {
   position: relative;
   display: grid;
@@ -386,6 +488,21 @@
   border-bottom: 2px solid #4da89d;
 }
 
+.caption-a {
+  top: 13%;
+  bottom: auto;
+}
+
+.caption-b,
+.caption-reference {
+  top: auto;
+  bottom: 15%;
+}
+
+.caption-reference .caption-label {
+  border-bottom: 2px solid var(--yellow);
+}
+
 .caption-copy {
   padding: 5px 9px;
   border-radius: 4px;
@@ -459,6 +576,14 @@
 
 .track-b {
   border-color: #4da89d;
+}
+
+.track-reference {
+  border-color: var(--yellow);
+}
+
+.transcript-grid.has-reference .track-reference {
+  grid-column: 1 / -1;
 }
 
 .track-heading {
@@ -604,6 +729,15 @@
 
   .time-rail-row {
     gap: 7px;
+  }
+
+  .playback-track-row {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .playback-track-row select {
+    width: 100%;
   }
 
   .time-readout {

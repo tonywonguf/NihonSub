@@ -27,6 +27,7 @@ import {
 import { extractOriginalAudio, prepareTranscriptionAudio, getAudioMetadata, splitAudioAtSilence } from './audioExtractor.js';
 import { saveSubtitles, generateBilingualSegments, parseVttToSegments } from './subtitleGenerator.js';
 import { createRunStore } from './runStore.js';
+import { parseReferenceSubtitles } from './referenceSubtitles.js';
 
 dotenv.config();
 
@@ -71,6 +72,17 @@ const upload = multer({
   storage,
   limits: { fileSize: 2 * 1024 * 1024 * 1024 } // 2GB limit
 });
+const referenceUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 5 * 1024 * 1024 }
+});
+
+function decodeSubtitleText(buffer) {
+  const encoding = buffer[0] === 0xff && buffer[1] === 0xfe ? 'utf-16le'
+    : buffer[0] === 0xfe && buffer[1] === 0xff ? 'utf-16be'
+      : 'utf-8';
+  return new TextDecoder(encoding, { fatal: true }).decode(buffer);
+}
 
 app.use(cors());
 app.use(express.json());
@@ -309,6 +321,47 @@ app.get('/api/runs/:jobId/checkpoint/:name', (req, res) => {
     return res.json(checkpoint);
   } catch (err) {
     return res.status(400).json({ error: err.message });
+  }
+});
+
+app.post('/api/runs/:jobId/reference-subtitles', (req, res, next) => {
+  referenceUpload.single('file')(req, res, error => {
+    if (error) {
+      const status = error.code === 'LIMIT_FILE_SIZE' ? 413 : 400;
+      return res.status(status).json({ error: status === 413 ? 'Reference subtitles must be 5 MB or smaller.' : error.message });
+    }
+    return next();
+  });
+}, (req, res) => {
+  try {
+    const run = runStore.get(req.params.jobId);
+    if (!run) return res.status(404).json({ error: 'Run not found.' });
+    if (run.metadata?.kind !== 'ab-test') return res.status(400).json({ error: 'Reference subtitles can only be attached to A/B runs.' });
+    if (!req.file) return res.status(400).json({ error: 'Choose an SRT or WebVTT file.' });
+
+    const fileName = path.basename(req.file.originalname.replace(/\\/g, '/'))
+      .replace(/[\u0000-\u001f\u007f]/g, '')
+      .slice(0, 255);
+    const extension = path.extname(fileName).toLowerCase();
+    if (!['.srt', '.vtt'].includes(extension)) {
+      return res.status(400).json({ error: 'Choose an .srt or .vtt file.' });
+    }
+
+    const offsetSeconds = req.body.offsetSeconds === undefined || req.body.offsetSeconds === ''
+      ? 0
+      : Number(req.body.offsetSeconds);
+    const content = decodeSubtitleText(req.file.buffer);
+    const segments = parseReferenceSubtitles(content, { offsetSeconds });
+    const reference = {
+      fileName: fileName || `reference${extension}`,
+      format: extension.slice(1),
+      offsetSeconds,
+      segments
+    };
+    runStore.saveCheckpoint(req.params.jobId, 'ab_reference', reference);
+    return res.json({ success: true, fileName: reference.fileName, cueCount: segments.length });
+  } catch (error) {
+    return res.status(400).json({ error: error.message || 'Could not save reference subtitles.' });
   }
 });
 
