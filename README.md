@@ -3,15 +3,14 @@
 <p align="left">
   <img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License: MIT">
   <img src="https://img.shields.io/badge/Node.js-v18+-68a063.svg?logo=node.js&logoColor=white" alt="Node.js">
-  <img src="https://img.shields.io/badge/Whisper-Large--v3-f05032.svg?logo=openai&logoColor=white" alt="Whisper Large-v3">
-  <img src="https://img.shields.io/badge/Inference-Groq%20LPU-f55036.svg" alt="Groq LPU">
-  <img src="https://img.shields.io/badge/Fallback-OpenRouter%20%2F%20DeepSeek-7952b3.svg" alt="OpenRouter DeepSeek">
+  <img src="https://img.shields.io/badge/Transcription-Parakeet-68a063.svg" alt="Local Parakeet transcription">
+  <img src="https://img.shields.io/badge/Translation-Ollama%20Qwen3-7952b3.svg" alt="Local Ollama Qwen3 translation">
   <img src="https://img.shields.io/badge/PRs-welcome-brightgreen.svg" alt="PRs Welcome">
   <img src="https://img.shields.io/github/stars/Abhishantpadam/nihonsub?style=social" alt="GitHub Stars">
 </p>
 
 > **Japanese Video AI Subtitler & Synchronized Cinema Player**  
-> Fast, vocalization-aware Japanese speech recognition powered by **Whisper Large-v3**, paired with contextual LLM translation (**English & Hindi**), silence-detection chunking for long media, and an interactive synchronized video player.
+> Local Japanese transcription with **Parakeet**, translated into English by **Qwen 3 4B via Ollama** by default, with an interactive synchronized video player.
 
 ---
 
@@ -36,14 +35,8 @@
 
 - 🎙️ **Acoustic Vocalization Capture**: Captures natural Japanese dialogue, non-verbal vocal markers, sighs, grunts, moans, and emotional nuances that standard transcription tools often strip out.
 - ✂️ **Lossless Silence-Detection Chunking**: Automatically analyzes waveforms with FFmpeg for natural pause intervals (`-30dB`, `d >= 0.5s`) for audio files longer than 10 minutes, preventing rate-limit issues and preserving sentence flow without mid-word cuts.
-- 🌐 **Expressive Contextual Translation**:
-  - **English**: Conversational dialogue with preserved emotion and subtitle action tags.
-  - **Hindi (हिन्दी / Hinglish)**: 
-    - **Devanagari (देवनागरी)**: Standard native Hindi script (e.g. *"नमस्ते, आप कैसे हैं?"*).
-    - **Hinglish (Roman Script)**: Casual Roman alphabet conversational texting style (e.g. *"Namaste, aap kaise hain?"*).
-  - **Bilingual Tracks**: Dual Japanese + English / Hindi / Hinglish display for language learners.
-- ⚡ **Automatic Rate Limit Fallback**:
-  - If Groq encounters an HTTP 429 rate limit during heavy batch translation, the engine automatically routes translation to **OpenRouter (DeepSeek)** or backs off gracefully.
+- 🌐 **Contextual English Translation**: Local Ollama Qwen3 4B is the default; configure another OpenAI-compatible provider in Settings if needed.
+- 🇯🇵🇬🇧 **Bilingual Track**: Display Japanese dialogue alongside English translation.
 - 🔌 **Custom Translation API / Agent Support**: Connect your own OpenAI-compatible `/chat/completions` endpoint (local Ollama, vLLM, custom agents, or proprietary LLMs) directly from the in-app UI.
 - 🎬 **Cinema Player & Interactive Transcript**:
   - Live clickable transcript with keyword search and auto-scroll following video timecodes.
@@ -59,18 +52,18 @@
 [Japanese Video File]
         │
         ▼ (FFmpeg Extraction)
-[16kHz Mono Audio (Whisper Optimized)]
+[16kHz Mono Audio]
         │
         ├── If Duration > 10m ──► [Silence Detection Chunking]
         │                                 │
         ▼                                 ▼
-[Groq Whisper Large-v3 API] ◄─────────────┘
+[Local NVIDIA Parakeet] ◄─────────────────┘
         │
         ▼
 [Japanese Dialogue & Timestamped Segments]
         │
         ▼ (Batch LLM Translation Pipeline)
-[Groq LLaMA 3.3 / OpenRouter DeepSeek / Custom API]
+[Local Ollama Qwen3 4B]
         │
         ▼
 [WebVTT & SRT Subtitles + Interactive Cinema Player]
@@ -96,8 +89,8 @@
      # or
      choco install ffmpeg
      ```
-3. **Groq API Key**: Get a free API key at [console.groq.com](https://console.groq.com/keys).
-4. **OpenRouter API Key** *(Optional)*: For automatic rate-limit fallback at [openrouter.ai](https://openrouter.ai/keys).
+3. **Ollama** with the Qwen3 4B model for local translation.
+4. **Parakeet runtime** for local Japanese transcription: run `./setup-parakeet.sh`.
 
 ---
 
@@ -119,12 +112,7 @@ Copy `.env.example` to `.env`:
 ```bash
 cp .env.example .env
 ```
-Open `.env` and set your credentials:
-```env
-PORT=3000
-GROQ_API_KEY=gsk_your_groq_api_key_here
-OPENROUTER_API_KEY=sk-or-v1_optional_openrouter_key
-```
+The application defaults to local Parakeet transcription and the local Ollama Qwen3 4B translation provider. Cloud API keys are optional if you choose a cloud provider in Settings.
 
 ### 4. Run the Application
 You can use the startup script:
@@ -138,6 +126,14 @@ npm start
 ```
 
 Open your browser at **`http://localhost:3000`**.
+
+### Local Japanese transcription with Parakeet
+
+Install the CPU-only runtime. The first transcription downloads NVIDIA's model (about 2.4 GB); no transcription API key is needed.
+
+```bash
+./setup-parakeet.sh
+```
 
 ---
 
@@ -157,8 +153,10 @@ Open your browser at **`http://localhost:3000`**.
 
 ```
 ├── audioExtractor.js      # FFmpeg audio conversion, metadata & silence-detection chunker
-├── transcriber.js         # Whisper Large-v3 client & multi-chunk coordinator
-├── translator.js          # Contextual LLM translation pipeline with rate-limit fallback
+├── transcriber.js         # Whisper API & local Parakeet transcription coordinator
+├── parakeet_transcribe.py # NeMo Parakeet local inference worker
+├── setup-parakeet.sh      # CPU-only local model runtime setup
+├── translator.js          # Contextual English translation pipeline
 ├── subtitleGenerator.js   # WebVTT, SRT, and bilingual track compiler
 ├── server.js              # Express API server with NDJSON streaming telemetry
 ├── public/                # Frontend Web UI (HTML5, Vanilla JS, CSS3 Cinema Theme)

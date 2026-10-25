@@ -1,0 +1,46 @@
+{
+  "title": "Choose the A/B review layout",
+  "question": "Which layout would make it easiest to judge the subtitle wording while both tracks stay visible over the same video?",
+  "options": [
+    {
+      "id": "cinema-first",
+      "kind": "assigned",
+      "label": "Cinema-first review",
+      "kicker": "THE ROLL",
+      "thesis": "Keep the video and both live subtitle overlays at the center of the review.",
+      "palette": ["#f2f3f0", "#202a32", "#b66b3b", "#358477"],
+      "materials": ["quiet workspace", "paired track colors"],
+      "viewport": "A compact experiment summary leads into a wide player; A appears over the image top, B at the bottom, with synchronized cue rows directly beneath.",
+      "risk": "The cue list may need a tighter default height to keep the player in view.",
+      "html": ".impeccable/mocks/decision/cinema-first.html",
+      "htmlFrame": "1440x900"
+    },
+    {
+      "id": "transcript-first",
+      "kind": "dealt",
+      "label": "Transcript-first compare",
+      "thesis": "Make paired cue wording the main work area, with the shared video always in view.",
+      "palette": ["#f2f3f0", "#202a32", "#b66b3b", "#358477"],
+      "materials": ["quiet workspace", "paired track colors"],
+      "viewport": "A narrow sticky video sits beside a large timestamped A/B cue table; the selected cue is highlighted in both tracks.",
+      "risk": "The video has less visual weight during playback.",
+      "html": ".impeccable/mocks/decision/transcript-first.html",
+      "htmlFrame": "1440x900"
+    },
+    {
+      "id": "experiment-bench",
+      "kind": "dealt",
+      "label": "Experiment bench",
+      "thesis": "Compare the two tracks beside one shared player, with the test summary in the same view.",
+      "palette": ["#f2f3f0", "#202a32", "#b66b3b", "#358477"],
+      "materials": ["quiet workspace", "paired track colors"],
+      "viewport": "The video occupies the left half; the right half stacks A and B cue rows under a concise experiment summary and aligned-timing status.",
+      "risk": "The simultaneous top-and-bottom overlays are smaller in the player.",
+      "html": ".impeccable/mocks/decision/experiment-bench.html",
+      "htmlFrame": "1440x900"
+    }
+  ],
+  "reroll": {"registers": ["safer", "bolder"]},
+  "buildPath": {"value": "code", "toggle": false},
+  "steer": true
+}

@@ -15,8 +15,8 @@ export function normalizeTranslationProviders(providersOrKey, openRouterKey, cus
       .map((p, idx) => ({
         id: p.id || `prov_${idx + 1}`,
         name: p.name || `Provider #${idx + 1}`,
-        baseUrl: (p.baseUrl && p.baseUrl.trim()) || 'https://api.groq.com/openai/v1',
-        model: (p.model && p.model.trim()) || 'qwen/qwen3.8-27b',
+        baseUrl: (p.baseUrl && p.baseUrl.trim()) || 'http://localhost:11434/v1',
+        model: (p.model && p.model.trim()) || 'qwen3:4b-instruct-2507-q4_K_M',
         apiKey: p.apiKey.trim()
       }));
   }
@@ -165,7 +165,7 @@ Format as a concise, structured bulleted brief (under 180 words).`;
 }
 
 /**
- * Translates Japanese subtitle segments into English or Hindi while preserving
+ * Translates Japanese subtitle segments into English while preserving
  * emotional vocalizations, grunts, moans, sighs, humming, and exact timestamps.
  * Supports:
  * - 'fallback' mode (v1): Sequential provider execution with real-time failover on rate limits.
@@ -180,10 +180,10 @@ export async function translateSegments(
   onProgress,
   customEndpoint,
   customModel,
-  scriptOption = 'devanagari',
   customApiKey = null,
   cachedGlobalDossier = null,
-  translationMode = 'fallback'
+  translationMode = 'fallback',
+  options = {}
 ) {
   if (!segments || segments.length === 0) {
     return [];
@@ -201,14 +201,29 @@ export async function translateSegments(
     throw new Error('No valid translation providers configured with API keys.');
   }
 
-  const isHinglish = targetLang === 'hi' && scriptOption === 'hinglish';
-  const langName = targetLang === 'hi'
-    ? (isHinglish ? 'Hinglish (Hindi in conversational Roman alphabet script, e.g. "Kya kar rahe ho?", "Sach mein?")' : 'Hindi (हिन्दी in standard Devanagari script)')
-    : 'English';
+  const langName = 'English';
+
+  const {
+    pastOnly = false,
+    batchSize = 25,
+    completedResults = [],
+    onBatchComplete
+  } = options;
+  if (!Number.isInteger(batchSize) || batchSize < 1 || batchSize > 25) {
+    throw new Error('Translation batch size must be an integer from 1 to 25.');
+  }
+  if (!Array.isArray(completedResults) || completedResults.length > segments.length ||
+      completedResults.some((result, index) => {
+        const source = segments[index];
+        return result?.id !== source.id || result.start !== source.start || result.end !== source.end ||
+          typeof result.text !== 'string' || !result.text.trim();
+      })) {
+    throw new Error('Completed translations must match a valid prefix of the source segments.');
+  }
 
   // Pass 1: Build Global Narrative & Character Dossier if not already cached
-  let globalDossier = cachedGlobalDossier;
-  if (!globalDossier && segments.length > 2) {
+  let globalDossier = pastOnly ? null : cachedGlobalDossier;
+  if (!pastOnly && !globalDossier && segments.length > 2) {
     if (onProgress) {
       onProgress({
         lang: targetLang,
@@ -226,16 +241,17 @@ export async function translateSegments(
     );
   }
 
-  const BATCH_SIZE = 25; // Balanced batch size for prompt quality & rate limits
-  const totalBatches = Math.ceil(segments.length / BATCH_SIZE);
-  const results = [];
+  const totalBatches = Math.ceil(segments.length / batchSize);
+  const results = completedResults.map(result => ({ ...result }));
 
-  for (let i = 0; i < segments.length; i += BATCH_SIZE) {
-    const batchIndex = Math.floor(i / BATCH_SIZE) + 1;
-    const chunk = segments.slice(i, i + BATCH_SIZE);
+  for (let i = results.length; i < segments.length; i += batchSize) {
+    const batchIndex = Math.floor(i / batchSize) + 1;
+    const chunk = segments.slice(i, i + batchSize);
 
     if (onProgress) {
-      const modeLabel = translationMode === 'ensemble' ? '🏆 Ensemble Multi-Model' : 'Context-aware';
+      const modeLabel = pastOnly
+        ? 'Past-only context'
+        : translationMode === 'ensemble' ? '🏆 Ensemble Multi-Model' : 'Context-aware';
       onProgress({
         lang: targetLang,
         batch: batchIndex,
@@ -253,10 +269,8 @@ export async function translateSegments(
       translatedChunk = await translateBatchEnsemble(
         chunk,
         langName,
-        targetLang,
         providers,
         onProgress,
-        scriptOption,
         previousContext,
         globalDossier
       );
@@ -264,16 +278,15 @@ export async function translateSegments(
       translatedChunk = await translateBatchWithFallback(
         chunk,
         langName,
-        targetLang,
         providers,
         onProgress,
-        scriptOption,
         previousContext,
         globalDossier
       );
     }
 
     results.push(...translatedChunk);
+    if (onBatchComplete) await onBatchComplete(results);
 
     if (onProgress) {
       onProgress({
@@ -401,63 +414,16 @@ export function scoreCandidate(cand, seg) {
 function buildTranslationPrompts(
   batch,
   langName,
-  targetLangCode,
-  scriptOption = 'devanagari',
   previousContext = [],
   globalDossier = null
 ) {
-  const isHindi = targetLangCode === 'hi';
-  const isHinglish = isHindi && scriptOption === 'hinglish';
-
-  let scriptInstruction = '';
-  if (isHindi) {
-    if (isHinglish) {
-      scriptInstruction = `
-SCRIPT REQUIREMENT: MANDATORY HINGLISH (ROMAN ALPHABET).
-Write modern, conversational everyday Hindi using the English Roman alphabet (casual texting style).
-DO NOT use Devanagari characters (like क, ख, ग).
-Examples:
-* "Mujhe yeh bahut pasand hai!" (Not: "मुझे यह बहुत पसंद है!")
-* "Arre, tum yahan kya kar rahe ho?"
-* "Sach mein? Yakeen nahi hota!"
-* "Kripya meri madad karo."`;
-    } else {
-      scriptInstruction = `
-SCRIPT REQUIREMENT: MANDATORY STANDARD DEVANAGARI (देवनागरी).
-Write in clear, standard Hindi written exclusively in the Devanagari script.
-Examples:
-* "मुझे यह बहुत पसंद है!"
-* "अरे, तुम यहाँ क्या कर रहे हो?"
-* "सच में? यकीन नहीं होता!"`;
-    }
-  }
-
-  let vocalizationExamples = '';
-  if (isHindi) {
-    if (isHinglish) {
-      vocalizationExamples = `
-* Japanese: "あっ…" -> Hinglish: "Ah..." or "Aah..."
-* Japanese: "うっ…" / "くっ…" -> Hinglish: "Ugh..." or "Khh..."
-* Japanese: "ふぅ…" / "はぁ…" -> Hinglish: "Phew..." or "Haa..." (sigh)
-* Japanese: "えっ？" -> Hinglish: "Eh?!" or "Hein?!"
-* Japanese: "うん" -> Hinglish: "Haan" or "Hmm"`;
-    } else {
-      vocalizationExamples = `
-* Japanese: "あっ…" -> Hindi: "आह..." or "अरे..."
-* Japanese: "うっ…" / "くっ…" -> Hindi: "उफ़्फ़..." or "उह..."
-* Japanese: "ふぅ…" / "はぁ…" -> Hindi: "हूँ..." or "हाह..." (sigh)
-* Japanese: "えっ？" -> Hindi: "एह?!" or "हैं?!"
-* Japanese: "うん" -> Hindi: "हाँ" or "हम्म"`;
-    }
-  } else {
-    vocalizationExamples = `
+  const vocalizationExamples = `
 * Japanese: "あっ…" -> English: "Ah..."
 * Japanese: "うっ…" / "くっ…" -> English: "Ugh..." / "Ghk..."
 * Japanese: "ふぅ…" / "はぁ…" -> English: "Phew..." / "Haa..." (sigh/breathing)
 * Japanese: "えっ？" -> English: "Eh?!" / "What?!"
 * Japanese: "うん" / "ふうん" -> English: "Yeah" / "Hmm" / "Uh-huh"
 * Japanese: "きゃっ！" -> English: "Kyaa!" / "Eek!"`;
-  }
 
   let contextSnippet = '';
   if (previousContext.length > 0) {
@@ -467,33 +433,32 @@ Examples:
 
   let dossierSection = '';
   if (globalDossier) {
-    dossierSection = `\n=======================================================\nGLOBAL EPISODE CONTEXT & CHARACTER DOSSIER:\n${globalDossier}\nUse this scene hierarchy, speaker relationship context, and tone to inform pronoun choices (e.g. tu vs tum vs aap in Hindi, or casual vs rude vs respectful in English) and ensure consistent terminology.\n=======================================================\n`;
+    dossierSection = `\n=======================================================\nGLOBAL EPISODE CONTEXT & CHARACTER DOSSIER:\n${globalDossier}\nUse this scene hierarchy, speaker relationship context, and tone to inform pronoun choices and ensure consistent terminology.\n=======================================================\n`;
   }
 
   const systemPrompt = `You are a professional anime subtitle translator specializing in natural, context-aware Japanese-to-${langName} localization.
 ${dossierSection}
-Your mission is to translate subtitle segments from Japanese into ${langName} while strictly adhering to these rules:
+Your priorities are accuracy before style, then natural, concise subtitle English. Follow these rules:
 
-1. PRESERVE EVERY EMOTIONAL SOUND, VOCALIZATION, AND BREATH:
-Anime dialogue relies heavily on non-verbal expressions. You must NEVER omit, silence, or ignore:
-- Sighs, gasps, heavy panting, moans, grunts, whimpers, screams, giggles, chuckles, hums, and hesitation sounds.
-- If a segment contains only a sound (e.g., "あっ…", "ふぅ…", "うーん"), translate it into the corresponding natural localized sound:
+1. SOURCE ACCURACY:
+- "japanese_text" is the source of truth. Translate only meaning supported by the Japanese text.
+- "audio_acoustic_translation" is secondary evidence: use it only to resolve ambiguity when compatible with the Japanese. If they conflict, follow the Japanese.
+- Do not add content not supported by the Japanese text, including explanations, motives, speaker identities, profanity, or extra emotional intensity.
+- Other cues and the dossier may clarify references, tone, or recurring terms, but never override the current Japanese cue or supply missing dialogue. Translate each cue's content only; leave incomplete source phrases incomplete when appropriate.
+
+2. VOCALIZATIONS:
+- Preserve vocalizations that appear in the Japanese text, including sighs, gasps, grunts, screams, laughter, humming, and hesitation sounds. Do not insert sounds that are not present in the Japanese text.
+- If a cue contains only a sound (e.g., "あっ…", "ふぅ…", "うーん"), use a natural English equivalent:
 ${vocalizationExamples}
 
-2. DUAL-CHANNEL AUDIO CONSENSUS:
-Each segment may include "audio_acoustic_translation" (a direct English acoustic interpretation captured directly from the raw audio waveform).
-- Cross-reference the Japanese text with this acoustic translation to resolve homophones, mumbled words, or dropped subjects.
-- Synthesize both channels into the most fluent, punchy subtitle.
-
-3. MAINTAIN SEGMENT INTEGRITY & TIMESTAMPS:
-- You will receive a JSON array of segments, each with an "id", "start", "end", and "japanese_text".
-- You MUST return a JSON array containing the exact same number of items with the exact same "id", "start", and "end".
+3. SEGMENT INTEGRITY:
+- You will receive JSON segments with an "id", "start", "end", and "japanese_text".
+- Return exactly one translated item for each input item, preserving order and the exact same "id", "start", and "end". Never merge, split, reorder, or retime cues.
 - Output field name for the translation must be "text".
 
-4. CONVERSATIONAL TONE & SLANG:
-- Adapt Japanese honorifics, sentence endings (zo, ze, wa, yo, ne), and character quirks into natural spoken dialogue.
-${scriptInstruction}
-
+4. NATURAL LOCALIZATION:
+- Use natural spoken English while preserving the Japanese meaning, tone, and register. Prefer a clear idiomatic equivalent over a word-for-word calque, but do not embellish.
+- Keep recurring names and terms consistent. Use a known English name only when confident; otherwise use a consistent literal rendering rather than guessing.
 OUTPUT FORMAT:
 Return ONLY a valid JSON array of objects.
 [
@@ -524,18 +489,14 @@ Do NOT enclose the output in markdown codeblocks or add any extra conversational
 async function translateBatchEnsemble(
   batch,
   langName,
-  targetLangCode,
   providers,
   onProgress,
-  scriptOption = 'devanagari',
   previousContext = [],
   globalDossier = null
 ) {
   const { systemPrompt, userPrompt } = buildTranslationPrompts(
     batch,
     langName,
-    targetLangCode,
-    scriptOption,
     previousContext,
     globalDossier
   );
@@ -559,10 +520,8 @@ async function translateBatchEnsemble(
     return translateBatchWithFallback(
       batch,
       langName,
-      targetLangCode,
       providers,
       onProgress,
-      scriptOption,
       previousContext,
       globalDossier
     );
@@ -682,18 +641,14 @@ async function translateBatchEnsemble(
 async function translateBatchWithFallback(
   batch,
   langName,
-  targetLangCode,
   providers,
   onProgress,
-  scriptOption = 'devanagari',
   previousContext = [],
   globalDossier = null
 ) {
   const { systemPrompt, userPrompt } = buildTranslationPrompts(
     batch,
     langName,
-    targetLangCode,
-    scriptOption,
     previousContext,
     globalDossier
   );
@@ -810,35 +765,28 @@ function parseTranslatedContent(rawContent, batch) {
     content = content.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim();
   }
 
+  let parsed;
   try {
-    let parsed = JSON.parse(content);
-    if (!Array.isArray(parsed)) {
-      const keys = Object.keys(parsed);
-      for (const k of keys) {
-        if (Array.isArray(parsed[k])) {
-          parsed = parsed[k];
-          break;
-        }
-      }
-    }
-
-    if (Array.isArray(parsed) && parsed.length > 0) {
-      return batch.map(orig => {
-        const found = parsed.find(p => p.id === orig.id);
-        const transText = found ? (found.text || found.translated_text || '') : '';
-        return {
-          id: orig.id,
-          start: orig.start,
-          end: orig.end,
-          text: (transText && transText.trim()) ? transText.trim() : orig.text
-        };
-      });
-    }
-  } catch (e) {
-    console.error('JSON parsing error:', e, 'Raw content:', content);
+    parsed = JSON.parse(content);
+  } catch (error) {
+    throw new Error(`Translation provider returned invalid JSON: ${error.message}`);
   }
 
-  return batch;
+  if (!Array.isArray(parsed)) {
+    parsed = Object.values(parsed).find(Array.isArray);
+  }
+  if (!Array.isArray(parsed) || parsed.length === 0) {
+    throw new Error('Translation provider returned no translated segments.');
+  }
+
+  return batch.map(orig => {
+    const found = parsed.find(segment => segment.id === orig.id);
+    const text = found?.text || found?.translated_text || found?.english_text;
+    if (typeof text !== 'string' || !text.trim()) {
+      throw new Error(`Translation provider returned no text for segment ${orig.id}.`);
+    }
+    return { id: orig.id, start: orig.start, end: orig.end, text: text.trim() };
+  });
 }
 
 /**

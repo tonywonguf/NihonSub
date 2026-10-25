@@ -15,7 +15,8 @@ import {
   translateAudioDirect,
   translateAudioChunksDirect,
   alignDualChannelSegments,
-  testTranscriptionApiConnection
+  testTranscriptionApiConnection,
+  checkParakeetRuntime
 } from './transcriber.js';
 import {
   translateSegments,
@@ -23,7 +24,9 @@ import {
   generateGlobalContextDossier,
   normalizeTranslationProviders
 } from './translator.js';
+import { extractOriginalAudio, prepareTranscriptionAudio, getAudioMetadata, splitAudioAtSilence } from './audioExtractor.js';
 import { saveSubtitles, generateBilingualSegments, parseVttToSegments } from './subtitleGenerator.js';
+import { createRunStore } from './runStore.js';
 
 dotenv.config();
 
@@ -37,6 +40,16 @@ const PORT = process.env.PORT || 3000;
 const UPLOADS_DIR = path.join(__dirname, 'storage', 'uploads');
 const AUDIO_DIR = path.join(__dirname, 'storage', 'audio');
 const SUBTITLES_DIR = path.join(__dirname, 'storage', 'subtitles');
+const RUNS_DIR = path.join(__dirname, 'storage', 'runs');
+const runStore = createRunStore(RUNS_DIR);
+runStore.markInterrupted();
+
+function getTranslationSignature(providers, mode) {
+  return JSON.stringify({
+    mode,
+    providers: providers.map(({ id, name, baseUrl, model }) => ({ id, name, baseUrl, model }))
+  });
+}
 
 [UPLOADS_DIR, AUDIO_DIR, SUBTITLES_DIR].forEach(dir => {
   if (!fs.existsSync(dir)) {
@@ -67,33 +80,17 @@ app.use(express.static(path.join(__dirname, 'public')));
 let serverConfig = {
   translationMode: 'fallback', // 'fallback' | 'ensemble'
   transcription: {
-    baseUrl: process.env.TRANSCRIPTION_BASE_URL || 'https://api.groq.com/openai/v1',
-    model: process.env.TRANSCRIPTION_MODEL || 'whisper-large-v3',
-    apiKey: process.env.TRANSCRIPTION_API_KEY || process.env.GROQ_API_KEY || ''
+    baseUrl: process.env.TRANSCRIPTION_BASE_URL || 'http://localhost:8000/v1',
+    model: process.env.TRANSCRIPTION_MODEL || 'nvidia/parakeet-tdt_ctc-0.6b-ja',
+    apiKey: process.env.TRANSCRIPTION_API_KEY || ''
   },
-  translationProviders: [
-    {
-      id: 'prov_groq',
-      name: 'Groq LPU (Qwen 3.8)',
-      baseUrl: 'https://api.groq.com/openai/v1',
-      model: process.env.TRANSLATION_MODEL || 'qwen/qwen3.8-27b',
-      apiKey: process.env.GROQ_API_KEY || ''
-    },
-    ...(process.env.CUSTOM_TRANSLATION_API_KEY ? [{
-      id: 'prov_toptools',
-      name: 'top-tools-ai.com',
-      baseUrl: process.env.CUSTOM_TRANSLATION_ENDPOINT || 'https://top-tools-ai.com/api/v1',
-      model: process.env.CUSTOM_TRANSLATION_MODEL || 'Top-Tools-Ai',
-      apiKey: process.env.CUSTOM_TRANSLATION_API_KEY
-    }] : []),
-    ...(process.env.OPENROUTER_API_KEY ? [{
-      id: 'prov_openrouter',
-      name: 'OpenRouter (DeepSeek)',
-      baseUrl: 'https://openrouter.ai/api/v1',
-      model: 'deepseek/deepseek-chat',
-      apiKey: process.env.OPENROUTER_API_KEY
-    }] : [])
-  ]
+  translationProviders: [{
+    id: 'prov_ollama_qwen3',
+    name: 'Local Qwen3 4B (Ollama)',
+    baseUrl: 'http://localhost:11434/v1',
+    model: process.env.TRANSLATION_MODEL || 'qwen3:4b-instruct-2507-q4_K_M',
+    apiKey: 'ollama'
+  }]
 };
 
 /**
@@ -124,7 +121,7 @@ app.get('/api/config', (req, res) => {
     transcription: {
       baseUrl: serverConfig.transcription.baseUrl,
       model: serverConfig.transcription.model,
-      configured: isGroqConfigured,
+      configured: isGroqConfigured || serverConfig.transcription.model === 'nvidia/parakeet-tdt_ctc-0.6b-ja',
       maskedKey: maskedTKey
     },
     translationProviders: safeProviders,
@@ -189,8 +186,8 @@ app.post('/api/config', (req, res) => {
       updated.push({
         id: incoming.id || `prov_${idx + 1}`,
         name: incoming.name || `Provider #${idx + 1}`,
-        baseUrl: (incoming.baseUrl && incoming.baseUrl.trim()) || 'https://api.groq.com/openai/v1',
-        model: (incoming.model && incoming.model.trim()) || 'qwen/qwen3.8-27b',
+        baseUrl: (incoming.baseUrl && incoming.baseUrl.trim()) || 'http://localhost:11434/v1',
+        model: (incoming.model && incoming.model.trim()) || 'qwen3:4b-instruct-2507-q4_K_M',
         apiKey: finalKey
       });
     });
@@ -227,8 +224,17 @@ app.post('/api/test-transcription-api', async (req, res) => {
   if (!effectiveKey || effectiveKey.includes('...')) {
     effectiveKey = serverConfig.transcription.apiKey || process.env.GROQ_API_KEY || '';
   }
-  const effectiveBase = baseUrl || serverConfig.transcription.baseUrl || 'https://api.groq.com/openai/v1';
-  const effectiveModel = model || serverConfig.transcription.model || 'whisper-large-v3';
+  const effectiveBase = baseUrl || serverConfig.transcription.baseUrl || 'http://localhost:8000/v1';
+  const effectiveModel = model || serverConfig.transcription.model || 'nvidia/parakeet-tdt_ctc-0.6b-ja';
+
+  if (effectiveModel === 'nvidia/parakeet-tdt_ctc-0.6b-ja') {
+    try {
+      await checkParakeetRuntime();
+      return res.json({ success: true, message: 'Parakeet local runtime is ready.' });
+    } catch (err) {
+      return res.status(400).json({ error: `Parakeet runtime is not installed. Run ./setup-parakeet.sh. ${err.message}` });
+    }
+  }
 
   if (!effectiveKey) {
     return res.status(400).json({ error: 'Please provide an API key to test transcription.' });
@@ -274,13 +280,44 @@ app.post('/api/test-custom-api', async (req, res) => {
 });
 
 /**
+ * GET /api/runs: Persistent run summaries and logs
+ */
+app.get('/api/runs', (req, res) => {
+  res.json({
+    runs: runStore.list().map(({ events, ...run }) => ({
+      ...run,
+      eventCount: events.length,
+      checkpoints: Object.keys(run.checkpoints || {})
+    }))
+  });
+});
+
+app.get('/api/runs/:jobId', (req, res) => {
+  try {
+    const run = runStore.get(req.params.jobId);
+    if (!run) return res.status(404).json({ error: 'Run not found.' });
+    return res.json(run);
+  } catch (err) {
+    return res.status(400).json({ error: err.message });
+  }
+});
+
+app.get('/api/runs/:jobId/checkpoint/:name', (req, res) => {
+  try {
+    const checkpoint = runStore.loadCheckpoint(req.params.jobId, req.params.name);
+    if (!checkpoint) return res.status(404).json({ error: 'Checkpoint not found.' });
+    return res.json(checkpoint);
+  } catch (err) {
+    return res.status(400).json({ error: err.message });
+  }
+});
+
+/**
  * POST /api/retranslate: Fast re-translation of existing subtitles using multi-provider fallback or ensemble
  */
 app.post('/api/retranslate', async (req, res) => {
   const {
     jobId,
-    targetLang,
-    hindiScript,
     translationProviders,
     customEndpoint,
     customModel,
@@ -288,21 +325,27 @@ app.post('/api/retranslate', async (req, res) => {
     translationMode
   } = req.body;
 
-  if (!jobId) {
-    return res.status(400).json({ error: 'Job ID is required.' });
+  if (!jobId || !/^[a-zA-Z0-9_-]+$/.test(jobId)) {
+    return res.status(400).json({ error: 'A valid job ID is required.' });
   }
 
   const jaVttPath = path.join(SUBTITLES_DIR, `${jobId}_ja.vtt`);
-  if (!fs.existsSync(jaVttPath)) {
+  const existingRun = runStore.get(jobId);
+  const resumeFailedRun = existingRun?.status === 'failed';
+  if (!fs.existsSync(jaVttPath) && !existingRun?.checkpoints?.japanese) {
     return res.status(404).json({ error: 'Original Japanese subtitles not found for this job.' });
   }
 
   try {
-    const jaVtt = fs.readFileSync(jaVttPath, 'utf-8');
-    const jaSegments = parseVttToSegments(jaVtt);
+    let run = existingRun;
+    if (!run) run = runStore.start(jobId, { source: 'saved Japanese subtitles' });
+    const checkpoint = runStore.loadCheckpoint(jobId, 'japanese');
+    const jaSegments = checkpoint?.segments || parseVttToSegments(fs.readFileSync(jaVttPath, 'utf-8'));
     if (!jaSegments || jaSegments.length === 0) {
       return res.status(400).json({ error: 'No segments found in Japanese subtitles.' });
     }
+    if (!checkpoint) runStore.saveCheckpoint(jobId, 'japanese', { segments: jaSegments, source: 'vtt' });
+    runStore.append(jobId, { type: 'progress', step: 'translate', message: 'Resuming from the saved Japanese transcript; Parakeet will not run.' });
 
     let activeProviders = [];
     if (Array.isArray(translationProviders) && translationProviders.length > 0) {
@@ -325,30 +368,47 @@ app.post('/api/retranslate', async (req, res) => {
       );
     }
 
-    const chosenLang = targetLang || 'en';
     const effectiveMode = translationMode || serverConfig.translationMode || 'fallback';
+    const translationSignature = getTranslationSignature(activeProviders, effectiveMode);
+    const savedTranslationProgress = resumeFailedRun
+      ? runStore.loadCheckpoint(jobId, 'english-progress')
+      : null;
+    const completedResults = savedTranslationProgress?.signature === translationSignature
+      ? savedTranslationProgress.segments
+      : [];
     const resultSubtitles = {};
 
-    // Pass 1: Global Context Dossier for re-translation
-    const globalDossier = await generateGlobalContextDossier(
+    // Reuse the saved dossier and Japanese transcript when resuming a failed run.
+    const savedDossier = runStore.loadCheckpoint(jobId, 'dossier');
+    const globalDossier = savedDossier?.text || await generateGlobalContextDossier(
       jaSegments,
       activeProviders
     );
+    if (globalDossier && !savedDossier) {
+      runStore.saveCheckpoint(jobId, 'dossier', { text: globalDossier });
+    }
 
-    if (chosenLang === 'en' || chosenLang === 'both') {
+    {
       const enSegments = await translateSegments(
         jaSegments,
         'en',
         activeProviders,
         null,
+        prog => runStore.append(jobId, { type: 'progress', step: 'translate', message: prog.status }),
         null,
         null,
-        null,
-        'devanagari',
         null,
         globalDossier,
-        effectiveMode
+        effectiveMode,
+        {
+          completedResults,
+          onBatchComplete: segments => runStore.saveCheckpoint(jobId, 'english-progress', {
+            signature: translationSignature,
+            segments
+          })
+        }
       );
+      runStore.saveCheckpoint(jobId, 'english', { segments: enSegments });
       const enSubs = await saveSubtitles(SUBTITLES_DIR, jobId, 'en', enSegments);
       resultSubtitles.en = {
         vttUrl: `/api/subtitles/${jobId}/en/vtt?t=${Date.now()}`,
@@ -366,40 +426,7 @@ app.post('/api/retranslate', async (req, res) => {
       };
     }
 
-    if (chosenLang === 'hi' || chosenLang === 'both') {
-      const script = hindiScript === 'hinglish' ? 'hinglish' : 'devanagari';
-      const hiSegments = await translateSegments(
-        jaSegments,
-        'hi',
-        activeProviders,
-        null,
-        null,
-        null,
-        null,
-        script,
-        null,
-        globalDossier,
-        effectiveMode
-      );
-      const hiSubs = await saveSubtitles(SUBTITLES_DIR, jobId, 'hi', hiSegments);
-      resultSubtitles.hi = {
-        vttUrl: `/api/subtitles/${jobId}/hi/vtt?t=${Date.now()}`,
-        srtUrl: `/api/subtitles/${jobId}/hi/srt?t=${Date.now()}`,
-        segments: hiSegments,
-        vttContent: hiSubs.vttContent,
-        script
-      };
-      const biHiSegments = generateBilingualSegments(jaSegments, hiSegments);
-      const biHiSubs = await saveSubtitles(SUBTITLES_DIR, jobId, 'bi_hi', biHiSegments);
-      resultSubtitles.bi_hi = {
-        vttUrl: `/api/subtitles/${jobId}/bi_hi/vtt?t=${Date.now()}`,
-        srtUrl: `/api/subtitles/${jobId}/bi_hi/srt?t=${Date.now()}`,
-        segments: biHiSegments,
-        vttContent: biHiSubs.vttContent,
-        script
-      };
-    }
-
+    runStore.append(jobId, { type: 'complete', step: 'complete', message: 'Translation resumed and subtitles saved.' });
     return res.json({
       success: true,
       jobId,
@@ -407,6 +434,7 @@ app.post('/api/retranslate', async (req, res) => {
     });
   } catch (err) {
     console.error('[Retranslate Error]:', err);
+    try { runStore.append(jobId, { type: 'error', step: 'translate', error: err.message || 'Re-translation failed.' }); } catch {}
     return res.status(500).json({ error: err.message || 'Re-translation failed.' });
   }
 });
@@ -510,8 +538,9 @@ app.post('/api/step4-transcribe', async (req, res) => {
     return res.end();
   }
 
-  const groqKey = (customApiKey && customApiKey.trim()) || process.env.GROQ_API_KEY;
-  if (!groqKey) {
+  const groqKey = (customApiKey && customApiKey.trim()) || serverConfig.transcription.apiKey || process.env.GROQ_API_KEY;
+  const isLocalParakeet = serverConfig.transcription.model === 'nvidia/parakeet-tdt_ctc-0.6b-ja';
+  if (!groqKey && !isLocalParakeet) {
     sendLog('error', 'Groq API key is missing. Please check your settings.');
     return res.end();
   }
@@ -555,16 +584,18 @@ app.post('/api/step4-transcribe', async (req, res) => {
       });
 
       const chunkResult = await transcribeAudioChunks(chunks, groqKey, (currentPart, totalParts) => {
-        sendLog('log', `Sending Part ${currentPart}/${totalParts} to Groq Whisper Large-v3...`);
-      });
+        sendLog('log', `Sending Part ${currentPart}/${totalParts} to ${isLocalParakeet ? 'local Parakeet' : 'Groq Whisper Large-v3'}...`);
+      }, serverConfig.transcription);
 
       sendLog('log', `All ${chunks.length} parts received! Calibrating timestamp offsets and merging segments...`);
       jaSegments = chunkResult.segments;
       duration = chunkResult.duration;
     } else {
-      sendLog('log', `Dispatching audio to Groq Whisper Large-v3 API with Japanese acoustic prompt...`);
-      const transcription = await transcribeAudio(audioPath, groqKey);
-      sendLog('log', `Whisper transcription complete! Captured vocalizations and dialogue.`);
+      sendLog('log', isLocalParakeet
+        ? 'Running local Parakeet Japanese transcription on CPU...'
+        : 'Dispatching audio to Groq Whisper Large-v3 API with Japanese acoustic prompt...');
+      const transcription = await transcribeAudio(audioPath, groqKey, serverConfig.transcription);
+      sendLog('log', `${isLocalParakeet ? 'Parakeet' : 'Whisper'} transcription complete.`);
       jaSegments = transcription.segments;
       duration = transcription.duration || 0;
     }
@@ -657,9 +688,13 @@ app.post('/api/process', upload.single('video'), async (req, res) => {
   res.setHeader('Content-Type', 'application/x-ndjson; charset=utf-8');
   res.setHeader('Transfer-Encoding', 'chunked');
 
+  let jobId = null;
   const sendEvent = (data) => {
+    if (jobId) {
+      try { runStore.append(jobId, data); } catch (e) { console.error(`[Run ${jobId}] Log write failed:`, e.message); }
+    }
     try {
-      res.write(JSON.stringify(data) + '\n');
+      res.write(JSON.stringify(jobId ? { ...data, jobId } : data) + '\n');
     } catch (e) {
       console.error('Error writing stream chunk:', e);
     }
@@ -667,6 +702,16 @@ app.post('/api/process', upload.single('video'), async (req, res) => {
 
   if (!req.file) {
     sendEvent({ type: 'error', error: 'No video file uploaded.' });
+    return res.end();
+  }
+
+  const videoPath = req.file.path;
+  const videoFileName = req.file.filename;
+  jobId = path.parse(videoFileName).name;
+  try {
+    runStore.start(jobId, { videoFileName, originalName: req.file.originalname });
+  } catch (err) {
+    sendEvent({ type: 'error', error: err.message });
     return res.end();
   }
 
@@ -682,17 +727,19 @@ app.post('/api/process', upload.single('video'), async (req, res) => {
 
   const transcriptionBaseUrl = (transcriptionConfig?.baseUrl && transcriptionConfig.baseUrl.trim())
     || serverConfig.transcription.baseUrl
-    || 'https://api.groq.com/openai/v1';
+    || 'http://localhost:8000/v1';
   const transcriptionModel = (transcriptionConfig?.model && transcriptionConfig.model.trim())
     || serverConfig.transcription.model
-    || 'whisper-large-v3';
+    || 'nvidia/parakeet-tdt_ctc-0.6b-ja';
   let transcriptionApiKey = (transcriptionConfig?.apiKey && transcriptionConfig.apiKey.trim() && !transcriptionConfig.apiKey.includes('...'))
     ? transcriptionConfig.apiKey.trim()
     : (serverConfig.transcription.apiKey || process.env.GROQ_API_KEY || '');
 
-  if (!transcriptionApiKey) {
+  const isLocalParakeet = transcriptionModel === 'nvidia/parakeet-tdt_ctc-0.6b-ja';
+  if (!transcriptionApiKey && !isLocalParakeet) {
     sendEvent({
       type: 'error',
+      step: 'transcribe',
       error: 'Transcription API key is missing. Please configure it in the Settings panel.'
     });
     return res.end();
@@ -732,11 +779,8 @@ app.post('/api/process', upload.single('video'), async (req, res) => {
     );
   }
 
-  const targetLang = req.body.targetLang || 'en'; // 'en', 'hi', or 'both'
+  const targetLang = 'en';
   const translationMode = req.body.translationMode || serverConfig.translationMode || 'fallback';
-  const videoPath = req.file.path;
-  const videoFileName = req.file.filename;
-  const jobId = path.parse(videoFileName).name;
 
   try {
     sendEvent({
@@ -760,11 +804,17 @@ app.post('/api/process', upload.single('video'), async (req, res) => {
       type: 'progress',
       step: 'transcribe',
       percent: 40,
-      message: `Dual-Channel AI: Extracting Japanese transcript via ${transcriptionModel} + direct acoustic translation...`
+      message: isLocalParakeet
+        ? 'Running local Parakeet Japanese transcription...'
+        : `Dual-Channel AI: Extracting Japanese transcript via ${transcriptionModel} + direct acoustic translation...`
     });
 
     const audioStat = fs.statSync(audioPath);
     const audioMeta = await getAudioMetadata(audioPath);
+    runStore.saveCheckpoint(jobId, 'audio', {
+      fileName: path.basename(audioPath),
+      duration: audioMeta.duration
+    });
     const isLongFile = audioMeta.duration > 600 || audioStat.size > 20 * 1024 * 1024;
 
     let jaSegments = [];
@@ -785,7 +835,7 @@ app.post('/api/process', upload.single('video'), async (req, res) => {
         type: 'progress',
         step: 'transcribe',
         percent: 50,
-        message: `Split into ${chunks.length} seamless chunks. Running parallel dual-channel transcription & acoustic translation...`
+        message: `Split into ${chunks.length} seamless chunks. Transcribing with ${isLocalParakeet ? 'local Parakeet' : 'the dual-channel pipeline'}...`
       });
 
       const [chunkResult, audioChunkResult] = await Promise.all([
@@ -797,10 +847,12 @@ app.post('/api/process', upload.single('video'), async (req, res) => {
             message: `Dual-Channel: Processing chunk ${curr} of ${tot}...`
           });
         }, transcriptionOptions),
-        translateAudioChunksDirect(chunks, transcriptionApiKey, null, transcriptionOptions).catch(e => {
-          console.warn('[Audio Direct Chunk Translation Non-fatal]:', e.message);
-          return { segments: [], fullText: '' };
-        })
+        isLocalParakeet
+          ? Promise.resolve({ segments: [], fullText: '' })
+          : translateAudioChunksDirect(chunks, transcriptionApiKey, null, transcriptionOptions).catch(e => {
+            console.warn('[Audio Direct Chunk Translation Non-fatal]:', e.message);
+            return { segments: [], fullText: '' };
+          })
       ]);
 
       jaSegments = alignDualChannelSegments(chunkResult.segments, audioChunkResult.segments);
@@ -808,10 +860,12 @@ app.post('/api/process', upload.single('video'), async (req, res) => {
     } else {
       const [transcription, audioTranslationResult] = await Promise.all([
         transcribeAudio(audioPath, transcriptionApiKey, transcriptionOptions),
-        translateAudioDirect(audioPath, transcriptionApiKey, transcriptionOptions).catch(e => {
-          console.warn('[Audio Direct Translation Non-fatal]:', e.message);
-          return { segments: [], fullText: '' };
-        })
+        isLocalParakeet
+          ? Promise.resolve({ segments: [], fullText: '' })
+          : translateAudioDirect(audioPath, transcriptionApiKey, transcriptionOptions).catch(e => {
+            console.warn('[Audio Direct Translation Non-fatal]:', e.message);
+            return { segments: [], fullText: '' };
+          })
       ]);
 
       jaSegments = alignDualChannelSegments(transcription.segments, audioTranslationResult.segments);
@@ -835,6 +889,11 @@ app.post('/api/process', upload.single('video'), async (req, res) => {
 
     // Save Original Japanese Subtitles
     const jaSubs = await saveSubtitles(SUBTITLES_DIR, jobId, 'ja', jaSegments);
+    runStore.saveCheckpoint(jobId, 'japanese', {
+      segments: jaSegments,
+      duration,
+      transcriptionModel
+    });
     const resultSubtitles = {
       ja: {
         vttUrl: `/api/subtitles/${jobId}/ja/vtt`,
@@ -864,6 +923,7 @@ app.post('/api/process', upload.single('video'), async (req, res) => {
       jaSegments,
       activeProviders
     );
+    if (globalDossier) runStore.saveCheckpoint(jobId, 'dossier', { text: globalDossier });
 
     if (globalDossier) {
       sendEvent({
@@ -882,7 +942,8 @@ app.post('/api/process', upload.single('video'), async (req, res) => {
     });
 
     // English Translation
-    if (targetLang === 'en' || targetLang === 'both') {
+    {
+      const translationSignature = getTranslationSignature(activeProviders, translationMode);
       sendEvent({
         type: 'progress',
         step: 'translate',
@@ -905,12 +966,18 @@ app.post('/api/process', upload.single('video'), async (req, res) => {
         },
         null,
         null,
-        'devanagari',
         null,
         globalDossier,
-        translationMode
+        translationMode,
+        {
+          onBatchComplete: segments => runStore.saveCheckpoint(jobId, 'english-progress', {
+            signature: translationSignature,
+            segments
+          })
+        }
       );
 
+      runStore.saveCheckpoint(jobId, 'english', { segments: enSegments });
       const enSubs = await saveSubtitles(SUBTITLES_DIR, jobId, 'en', enSegments);
       resultSubtitles.en = {
         vttUrl: `/api/subtitles/${jobId}/en/vtt`,
@@ -927,60 +994,6 @@ app.post('/api/process', upload.single('video'), async (req, res) => {
         srtUrl: `/api/subtitles/${jobId}/bi_en/srt`,
         segments: biEnSegments,
         vttContent: biEnSubs.vttContent
-      };
-    }
-
-    // Hindi Translation (Devanagari vs Hinglish)
-    const hindiScript = req.body.hindiScript === 'hinglish' ? 'hinglish' : 'devanagari';
-
-    if (targetLang === 'hi' || targetLang === 'both') {
-      const scriptLabel = hindiScript === 'hinglish' ? 'Hinglish (Roman Script)' : 'Hindi (हिन्दी / देवनागरी)';
-      sendEvent({
-        type: 'progress',
-        step: 'translate',
-        percent: 70,
-        message: `Translating to ${scriptLabel} with expressive vocal markers...`
-      });
-
-      const hiSegments = await translateSegments(
-        jaSegments,
-        'hi',
-        activeProviders,
-        null,
-        (prog) => {
-          sendEvent({
-            type: 'progress',
-            step: 'translate',
-            percent: Math.min(92, 70 + Math.round((prog.completedSegments / prog.totalSegments) * 22)),
-            message: `[${hindiScript === 'hinglish' ? 'Hinglish' : 'Hindi'}] ${prog.status}`
-          });
-        },
-        null,
-        null,
-        hindiScript,
-        null,
-        globalDossier,
-        translationMode
-      );
-
-      const hiSubs = await saveSubtitles(SUBTITLES_DIR, jobId, 'hi', hiSegments);
-      resultSubtitles.hi = {
-        vttUrl: `/api/subtitles/${jobId}/hi/vtt`,
-        srtUrl: `/api/subtitles/${jobId}/hi/srt`,
-        segments: hiSegments,
-        vttContent: hiSubs.vttContent,
-        script: hindiScript
-      };
-
-      // Bilingual Hindi + Japanese
-      const biHiSegments = generateBilingualSegments(jaSegments, hiSegments);
-      const biHiSubs = await saveSubtitles(SUBTITLES_DIR, jobId, 'bi_hi', biHiSegments);
-      resultSubtitles.bi_hi = {
-        vttUrl: `/api/subtitles/${jobId}/bi_hi/vtt`,
-        srtUrl: `/api/subtitles/${jobId}/bi_hi/srt`,
-        segments: biHiSegments,
-        vttContent: biHiSubs.vttContent,
-        script: hindiScript
       };
     }
 

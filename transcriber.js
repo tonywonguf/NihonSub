@@ -3,6 +3,38 @@ dns.setDefaultResultOrder('ipv4first');
 
 import fs from 'fs';
 import path from 'path';
+import { spawn } from 'child_process';
+import { fileURLToPath } from 'url';
+
+const PARAKEET_MODEL = 'nvidia/parakeet-tdt_ctc-0.6b-ja';
+const PARAKEET_SCRIPT = fileURLToPath(new URL('./parakeet_transcribe.py', import.meta.url));
+const PARAKEET_PYTHON = process.env.PARAKEET_PYTHON || path.resolve(path.dirname(PARAKEET_SCRIPT), '.venv/bin/python');
+
+function runParakeet(audioPaths, check = false, maxSegmentDuration = 8) {
+  return new Promise((resolve, reject) => {
+    const args = check
+      ? [PARAKEET_SCRIPT, '--check']
+      : [PARAKEET_SCRIPT, '--max-segment-duration', String(maxSegmentDuration), ...audioPaths];
+    const proc = spawn(PARAKEET_PYTHON, args);
+    let stdout = '';
+    let stderr = '';
+    proc.stdout.on('data', chunk => { stdout += chunk; });
+    proc.stderr.on('data', chunk => { stderr += chunk; });
+    proc.on('error', reject);
+    proc.on('close', code => {
+      if (code !== 0) return reject(new Error(stderr.trim() || `Parakeet worker exited with code ${code}`));
+      try {
+        resolve(JSON.parse(stdout.trim().split(/\r?\n/).at(-1)));
+      } catch {
+        reject(new Error(`Invalid Parakeet worker response: ${stdout.slice(-300)}`));
+      }
+    });
+  });
+}
+
+export async function checkParakeetRuntime() {
+  return runParakeet([], true);
+}
 
 const GROQ_TRANSCRIPTION_URL = 'https://api.groq.com/openai/v1/audio/transcriptions';
 
@@ -25,17 +57,26 @@ export function containsJapanese(text) {
  * @returns {Promise<{ segments: Array<{ id: number, start: number, end: number, text: string }>, fullText: string, language: string, duration: number }>}
  */
 export async function transcribeAudio(audioPath, apiKey, options = {}) {
+  if (!fs.existsSync(audioPath)) {
+    throw new Error(`Audio file not found: ${audioPath}`);
+  }
+
+  const modelToUse = (options.model && options.model.trim()) || process.env.TRANSCRIPTION_MODEL || PARAKEET_MODEL;
+  if (modelToUse === PARAKEET_MODEL) {
+    const maxSegmentDuration = options.maxSegmentDuration ?? 8;
+    if (!Number.isFinite(maxSegmentDuration) || maxSegmentDuration <= 0 || maxSegmentDuration > 60) {
+      throw new Error('Parakeet segment duration must be greater than 0 and at most 60 seconds.');
+    }
+    const [result] = await runParakeet([audioPath], false, maxSegmentDuration);
+    return { ...result, language: 'ja', duration: result.segments.at(-1)?.end || 0 };
+  }
+
   const effectiveKey = apiKey || process.env.GROQ_API_KEY;
   if (!effectiveKey) {
     throw new Error('Transcription API Key is missing. Please configure it in .env or the Settings panel.');
   }
 
-  if (!fs.existsSync(audioPath)) {
-    throw new Error(`Audio file not found: ${audioPath}`);
-  }
-
-  const baseUrl = (options.baseUrl && options.baseUrl.trim()) || process.env.TRANSCRIPTION_BASE_URL || 'https://api.groq.com/openai/v1';
-  const modelToUse = (options.model && options.model.trim()) || process.env.TRANSCRIPTION_MODEL || 'whisper-large-v3';
+  const baseUrl = (options.baseUrl && options.baseUrl.trim()) || process.env.TRANSCRIPTION_BASE_URL || 'http://localhost:8000/v1';
   const transcriptionEndpoint = `${baseUrl.replace(/\/+$/, '')}/audio/transcriptions`;
 
   const audioBuffer = await fs.promises.readFile(audioPath);
@@ -135,6 +176,22 @@ export async function transcribeAudio(audioPath, apiKey, options = {}) {
  * @returns {Promise<{ segments: Array<{ id: number, start: number, end: number, text: string }>, duration: number }>}
  */
 export async function transcribeAudioChunks(chunks, apiKey, onChunkProgress, options = {}) {
+  const modelToUse = (options.model && options.model.trim()) || process.env.TRANSCRIPTION_MODEL || PARAKEET_MODEL;
+  if (modelToUse === PARAKEET_MODEL) {
+    const results = await runParakeet(chunks.map(chunk => chunk.path));
+    let globalSegmentId = 0;
+    const segments = results.flatMap((result, index) => result.segments.map(segment => ({
+      id: globalSegmentId++,
+      start: Number((segment.start + chunks[index].startTime).toFixed(3)),
+      end: Number((segment.end + chunks[index].startTime).toFixed(3)),
+      text: segment.text
+    })));
+    return {
+      segments: segments.sort((a, b) => a.start - b.start),
+      duration: Math.max(...chunks.map((chunk, index) => chunk.startTime + (results[index].segments.at(-1)?.end || chunk.duration)))
+    };
+  }
+
   let allSegments = [];
   let globalSegmentId = 0;
   let totalDuration = 0;

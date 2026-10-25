@@ -3,7 +3,7 @@
 
 let selectedFile = null;
 let currentPipelineData = null; // Store subtitles & streams
-let activeSubtitlesData = null; // Subtitles mapping: { en, hi, ja, bi_en, bi_hi }
+let activeSubtitlesData = null; // Subtitles mapping: { en, ja, bi_en }
 let activeSegments = []; // Currently displayed segments
 let activeSegmentIndex = -1;
 let timeOffset = 0.0;
@@ -13,28 +13,19 @@ let activeSubtitleStyle = localStorage.getItem('nihonsub_sub_style') || localSto
 
 // Speech-to-Text Transcription Config
 let transcriptionConfig = {
-  baseUrl: 'https://api.groq.com/openai/v1',
-  model: 'whisper-large-v3',
+  baseUrl: 'http://localhost:8000/v1',
+  model: 'nvidia/parakeet-tdt_ctc-0.6b-ja',
   apiKey: ''
 };
 
 // Translation Providers Fallback Chain (Priority Order)
-let translationProviders = [
-  {
-    id: 'prov_groq',
-    name: 'Groq LPU (Primary)',
-    baseUrl: 'https://api.groq.com/openai/v1',
-    model: 'qwen/qwen3.8-27b',
-    apiKey: ''
-  },
-  {
-    id: 'prov_toptools',
-    name: 'top-tools-ai.com',
-    baseUrl: 'https://top-tools-ai.com/api/v1',
-    model: 'Top-Tools-Ai',
-    apiKey: ''
-  }
-];
+let translationProviders = [{
+  id: 'prov_ollama_qwen3',
+  name: 'Local Qwen3 4B (Ollama)',
+  baseUrl: 'http://localhost:11434/v1',
+  model: 'qwen3:4b-instruct-2507-q4_K_M',
+  apiKey: 'ollama'
+}];
 
 // Translation Pipeline Mode: 'fallback' (v1) | 'ensemble' (v2)
 let currentTranslationMode = 'fallback';
@@ -55,7 +46,6 @@ const clearFileBtn = document.getElementById('clearFileBtn');
 const generateBtn = document.getElementById('generateBtn');
 const activeTranslatorNotice = document.getElementById('activeTranslatorNotice');
 const configureTranslatorLink = document.getElementById('configureTranslatorLink');
-const hindiScriptRow = document.getElementById('hindiScriptRow');
 
 // Translation Mode Elements
 const translationModeRadios = document.querySelectorAll('input[name="translationMode"]');
@@ -135,6 +125,7 @@ const transcriptionTestStatus = document.getElementById('transcriptionTestStatus
 const presetGroqWhisperBtn = document.getElementById('presetGroqWhisperBtn');
 const presetOpenAIWhisperBtn = document.getElementById('presetOpenAIWhisperBtn');
 const presetLocalWhisperBtn = document.getElementById('presetLocalWhisperBtn');
+const presetParakeetBtn = document.getElementById('presetParakeetBtn');
 
 // Translation Fallback Chain Elements
 const translationProvidersContainer = document.getElementById('translationProvidersContainer');
@@ -150,6 +141,8 @@ const closeLogModalBtn = document.getElementById('closeLogModalBtn');
 const closeLogModalFooterBtn = document.getElementById('closeLogModalFooterBtn');
 const clearAllLogsBtn = document.getElementById('clearAllLogsBtn');
 const globalLogHistory = document.getElementById('globalLogHistory');
+const savedRunHistory = document.getElementById('savedRunHistory');
+const refreshRunHistoryBtn = document.getElementById('refreshRunHistoryBtn');
 const logBadgeCount = document.getElementById('logBadgeCount');
 const modalLogCount = document.getElementById('modalLogCount');
 
@@ -161,6 +154,7 @@ document.addEventListener('DOMContentLoaded', () => {
   checkConfig();
   setupEventListeners();
   setupKeyboardShortcuts();
+  loadSavedRuns();
   updateCustomTranslatorUI();
 
   if (subStyleSelect) {
@@ -245,12 +239,12 @@ async function checkConfig() {
     }
 
     if (apiKeyStatus) {
-      if (data.groqConfigured) {
+      if (data.transcription?.configured || data.groqConfigured) {
         apiKeyStatus.className = 'status-chip ready';
         apiKeyStatus.querySelector('.text').textContent = `Speech: ${data.transcription?.model || 'Whisper'}`;
       } else {
         apiKeyStatus.className = 'status-chip missing';
-        apiKeyStatus.querySelector('.text').textContent = 'Key Missing';
+        apiKeyStatus.querySelector('.text').textContent = 'Transcription Not Configured';
       }
     }
 
@@ -282,22 +276,20 @@ function setTranslationMode(mode) {
 
   if (modeDescIcon && modeDescText) {
     if (mode === 'ensemble') {
-      modeDescIcon.textContent = '🏆';
-      modeDescText.innerHTML = '<strong>Multi-Model Ensemble Voting (v2):</strong> Queries all configured AI models in parallel, eliminates hallucinations via semantic clustering, and crowns the best-fit subtitle for each line.';
+      modeDescIcon.textContent = 'V2';
+      modeDescText.innerHTML = '<strong>Multi-Model Ensemble Voting (v2):</strong> Queries all configured AI models in parallel, evaluates their candidate translations, and selects a result for each line.';
       if (modeTagBadge) {
         modeTagBadge.textContent = 'v2 Ensemble Active';
-        modeTagBadge.style.background = 'linear-gradient(135deg, rgba(245, 158, 11, 0.2), rgba(217, 119, 6, 0.2))';
-        modeTagBadge.style.borderColor = 'rgba(245, 158, 11, 0.4)';
-        modeTagBadge.style.color = '#fbbf24';
+        modeTagBadge.classList.add('mode-ensemble');
+        modeTagBadge.classList.remove('mode-fallback');
       }
     } else {
-      modeDescIcon.textContent = '⚡';
-      modeDescText.innerHTML = '<strong>Fast Fallback (v1):</strong> Uses your primary translation model and automatically fails over in real-time to backup models if rate limits (429) or timeouts occur.';
+      modeDescIcon.textContent = 'V1';
+      modeDescText.innerHTML = '<strong>Fast Fallback (v1):</strong> Uses your primary translation model and automatically fails over to configured backup models if rate limits or timeouts occur.';
       if (modeTagBadge) {
         modeTagBadge.textContent = 'v1 Fast Fallback';
-        modeTagBadge.style.background = 'linear-gradient(135deg, rgba(225, 29, 72, 0.2), rgba(168, 85, 247, 0.2))';
-        modeTagBadge.style.borderColor = 'rgba(225, 29, 72, 0.35)';
-        modeTagBadge.style.color = '#f43f5e';
+        modeTagBadge.classList.add('mode-fallback');
+        modeTagBadge.classList.remove('mode-ensemble');
       }
     }
   }
@@ -308,14 +300,14 @@ function setTranslationMode(mode) {
 function updateCustomTranslatorUI() {
   if (!activeTranslatorNotice) return;
   const activeCount = translationProviders.length;
-  const primary = translationProviders[0] || { name: 'Groq LPU', model: 'qwen3.8-27b' };
+  const primary = translationProviders[0] || { name: 'Local Qwen3 4B (Ollama)', model: 'qwen3:4b-instruct-2507-q4_K_M' };
 
   if (currentTranslationMode === 'ensemble') {
-    activeTranslatorNotice.textContent = `🏆 Ensemble Engine Active: ${activeCount} model${activeCount === 1 ? '' : 's'} running in parallel with consensus voting`;
+    activeTranslatorNotice.textContent = `Ensemble active: ${activeCount} model${activeCount === 1 ? '' : 's'} running in parallel with consensus voting`;
     activeTranslatorNotice.style.color = '#fbbf24';
   } else if (activeCount > 1) {
     const secondary = translationProviders[1];
-    activeTranslatorNotice.textContent = `⚡ Fast Fallback: ${primary.name} ➔ ${secondary.name} (+${activeCount - 1} failover)`;
+    activeTranslatorNotice.textContent = `Fast fallback: ${primary.name} → ${secondary.name} (+${activeCount - 1} failover)`
     activeTranslatorNotice.style.color = 'var(--cyan)';
   } else if (primary) {
     activeTranslatorNotice.textContent = `Using Translator: ${primary.name} (${primary.model})`;
@@ -373,18 +365,6 @@ function setupEventListeners() {
     resetFileSelection();
   });
 
-  // Target Language Switcher (Reveal Devanagari vs Hinglish when Hindi or Both is picked)
-  document.querySelectorAll('input[name="targetLang"]').forEach(radio => {
-    radio.addEventListener('change', (e) => {
-      const val = e.target.value;
-      if (val === 'hi' || val === 'both') {
-        hindiScriptRow.classList.remove('hidden');
-      } else {
-        hindiScriptRow.classList.add('hidden');
-      }
-    });
-  });
-
   // Translation Engine Mode Switcher (Step 1)
   translationModeRadios.forEach(radio => {
     radio.addEventListener('change', (e) => {
@@ -438,9 +418,9 @@ function setupEventListeners() {
       return;
     }
 
-    const primaryProv = translationProviders[0] || { name: 'Primary AI', model: 'qwen3.8-27b' };
+    const primaryProv = translationProviders[0] || { name: 'Local Qwen3 4B (Ollama)', model: 'qwen3:4b-instruct-2507-q4_K_M' };
     const fallbackCount = Math.max(0, translationProviders.length - 1);
-    const targetLangToUse = currentPipelineData.targetLang || 'both';
+    const targetLangToUse = 'en';
     const isEnsemble = currentTranslationMode === 'ensemble' && translationProviders.length > 1;
 
     const modeSummary = isEnsemble
@@ -469,7 +449,6 @@ function setupEventListeners() {
           jobId: currentPipelineData.jobId,
           targetLang: targetLangToUse,
           translationMode: currentTranslationMode,
-          hindiScript: (document.querySelector('input[name="hindiScript"]:checked') || {}).value || 'devanagari',
           translationProviders: translationProviders
         })
       });
@@ -483,11 +462,10 @@ function setupEventListeners() {
       if (!activeSubtitlesData) activeSubtitlesData = {};
       Object.assign(activeSubtitlesData, data.subtitles);
 
-      populateSubtitleSelect(targetLangToUse);
+      populateSubtitleSelect();
 
       // Switch to translated track
-      const preferredTrack = (targetLangToUse === 'hi') ? 'hi' : 'en';
-      subLangSelect.value = activeSubtitlesData[preferredTrack] ? preferredTrack : Object.keys(data.subtitles)[0];
+      subLangSelect.value = activeSubtitlesData.en ? 'en' : Object.keys(data.subtitles)[0];
       switchSubtitleLanguage(subLangSelect.value);
 
       appendActivityLog(`[Re-translation] Subtitles updated successfully in cinema player!`, 'system');
@@ -569,8 +547,10 @@ function setupEventListeners() {
   // Global Activity Log Modal
   activityLogToggleBtn.addEventListener('click', () => {
     activityLogModal.classList.remove('hidden');
+    loadSavedRuns();
     globalLogHistory.scrollTop = globalLogHistory.scrollHeight;
   });
+  refreshRunHistoryBtn?.addEventListener('click', loadSavedRuns);
 
   closeLogModalBtn.addEventListener('click', () => activityLogModal.classList.add('hidden'));
   closeLogModalFooterBtn.addEventListener('click', () => activityLogModal.classList.add('hidden'));
@@ -616,7 +596,7 @@ function setupEventListeners() {
     presetGroqWhisperBtn.addEventListener('click', () => {
       transcriptionEndpointInput.value = 'https://api.groq.com/openai/v1';
       transcriptionModelInput.value = 'whisper-large-v3';
-      showSettingsNotice('⚡ Preset applied: Groq Whisper Large-v3 (Default / High Speed). Enter your API Key.');
+      showSettingsNotice('⚡ Groq Whisper Large-v3 preset applied. Enter your API key.');
     });
   }
   if (presetOpenAIWhisperBtn) {
@@ -634,19 +614,27 @@ function setupEventListeners() {
     });
   }
 
+  if (presetParakeetBtn) {
+    presetParakeetBtn.addEventListener('click', () => {
+      transcriptionModelInput.value = 'nvidia/parakeet-tdt_ctc-0.6b-ja';
+      transcriptionApiKeyInput.value = '';
+      showSettingsNotice('🦜 Local Parakeet selected. Install the local runtime; transcription runs on CPU on this PC.');
+    });
+  }
+
   // Test Transcription Connection
   if (testTranscriptionBtn) {
     testTranscriptionBtn.addEventListener('click', async () => {
       const baseUrl = transcriptionEndpointInput.value.trim();
-      const model = transcriptionModelInput.value.trim() || 'whisper-large-v3';
+      const model = transcriptionModelInput.value.trim() || 'nvidia/parakeet-tdt_ctc-0.6b-ja';
       const apiKey = transcriptionApiKeyInput.value.trim();
 
-      if (!apiKey) {
+      if (!apiKey && model !== 'nvidia/parakeet-tdt_ctc-0.6b-ja') {
         showTranscriptionTestStatus('error', 'Please enter your Transcription API Key to test.');
         return;
       }
 
-      showTranscriptionTestStatus('testing', `Testing connection to ${baseUrl}...`);
+      showTranscriptionTestStatus('testing', model === 'nvidia/parakeet-tdt_ctc-0.6b-ja' ? 'Checking local Parakeet runtime...' : `Testing connection to ${baseUrl}...`);
       testTranscriptionBtn.disabled = true;
 
       try {
@@ -714,18 +702,18 @@ function setupEventListeners() {
     });
   }
 
-  // Translation Preset: Add Local Ollama
+  // Translation Preset: Make local Qwen3 the primary translator.
   if (addOllamaProviderBtn) {
     addOllamaProviderBtn.addEventListener('click', () => {
-      translationProviders.push({
-        id: 'prov_' + Date.now(),
-        name: 'Local Ollama',
+      translationProviders = [{
+        id: 'prov_ollama_qwen3',
+        name: 'Local Qwen3 4B (Ollama)',
         baseUrl: 'http://localhost:11434/v1',
-        model: 'qwen2.5:7b',
+        model: 'qwen3:4b-instruct-2507-q4_K_M',
         apiKey: 'ollama'
-      });
+      }];
       renderTranslationProviders();
-      showSettingsNotice('Added Local Ollama (qwen2.5:7b) to translation chain.');
+      showSettingsNotice('Local Qwen3 is the only translator; cloud fallbacks are disabled. Save settings to apply it.');
     });
   }
 
@@ -750,26 +738,17 @@ function setupEventListeners() {
     resetDefaultsBtn.addEventListener('click', () => {
       if (!confirm('Reset all settings to recommended defaults?')) return;
       transcriptionConfig = {
-        baseUrl: 'https://api.groq.com/openai/v1',
-        model: 'whisper-large-v3',
+        baseUrl: 'http://localhost:8000/v1',
+        model: 'nvidia/parakeet-tdt_ctc-0.6b-ja',
         apiKey: ''
       };
-      translationProviders = [
-        {
-          id: 'prov_groq',
-          name: 'Groq LPU (Primary)',
-          baseUrl: 'https://api.groq.com/openai/v1',
-          model: 'qwen/qwen3.8-27b',
-          apiKey: ''
-        },
-        {
-          id: 'prov_toptools',
-          name: 'top-tools-ai.com',
-          baseUrl: 'https://top-tools-ai.com/api/v1',
-          model: 'Top-Tools-Ai',
-          apiKey: ''
-        }
-      ];
+      translationProviders = [{
+        id: 'prov_ollama_qwen3',
+        name: 'Local Qwen3 4B (Ollama)',
+        baseUrl: 'http://localhost:11434/v1',
+        model: 'qwen3:4b-instruct-2507-q4_K_M',
+        apiKey: 'ollama'
+      }];
       renderSettingsUI();
       showSettingsNotice('Settings reset to defaults. Remember to click Save.');
     });
@@ -778,8 +757,8 @@ function setupEventListeners() {
   // Save Settings
   saveSettingsBtn.addEventListener('click', async () => {
     // 1. Read transcription inputs
-    transcriptionConfig.baseUrl = transcriptionEndpointInput.value.trim() || 'https://api.groq.com/openai/v1';
-    transcriptionConfig.model = transcriptionModelInput.value.trim() || 'whisper-large-v3';
+    transcriptionConfig.baseUrl = transcriptionEndpointInput.value.trim() || 'http://localhost:8000/v1';
+    transcriptionConfig.model = transcriptionModelInput.value.trim() || 'nvidia/parakeet-tdt_ctc-0.6b-ja';
     transcriptionConfig.apiKey = transcriptionApiKeyInput.value.trim();
 
     // 2. Read each translation provider from rendered DOM cards
@@ -872,8 +851,8 @@ function showTranscriptionTestStatus(type, msg) {
 }
 
 function renderSettingsUI() {
-  if (transcriptionEndpointInput) transcriptionEndpointInput.value = transcriptionConfig.baseUrl || 'https://api.groq.com/openai/v1';
-  if (transcriptionModelInput) transcriptionModelInput.value = transcriptionConfig.model || 'whisper-large-v3';
+  if (transcriptionEndpointInput) transcriptionEndpointInput.value = transcriptionConfig.baseUrl || 'http://localhost:8000/v1';
+  if (transcriptionModelInput) transcriptionModelInput.value = transcriptionConfig.model || 'nvidia/parakeet-tdt_ctc-0.6b-ja';
   if (transcriptionApiKeyInput) transcriptionApiKeyInput.value = transcriptionConfig.apiKey || '';
 
   renderTranslationProviders();
@@ -1090,6 +1069,120 @@ function appendActivityLog(msg, type = 'normal', timestamp = '') {
   }
 }
 
+async function loadSavedRuns() {
+  if (!savedRunHistory) return;
+  try {
+    const response = await fetch('/api/runs');
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || 'Could not load saved runs.');
+    savedRunHistory.replaceChildren();
+    if (!data.runs.length) {
+      savedRunHistory.textContent = 'No saved runs yet.';
+      return;
+    }
+
+    for (const run of data.runs) {
+      const row = document.createElement('div');
+      row.className = 'saved-run-row';
+      const title = document.createElement('div');
+      title.className = 'saved-run-title';
+      title.textContent = `${run.metadata?.originalName || run.metadata?.videoFileName || run.jobId} · ${run.status} · ${run.lastStep}`;
+      row.appendChild(title);
+
+      const actions = document.createElement('div');
+      actions.className = 'saved-run-actions';
+      const logButton = document.createElement('button');
+      logButton.type = 'button';
+      logButton.className = 'btn btn-sm btn-outline';
+      logButton.textContent = 'View log';
+      logButton.addEventListener('click', async () => {
+        try { await loadSavedRunLog(run.jobId); }
+        catch (err) { appendActivityLog(`[Saved Run Log Error] ${err.message}`, 'error'); }
+      });
+      actions.appendChild(logButton);
+
+      if (run.metadata?.kind === 'ab-test' && run.metadata.videoJobId) {
+        const reviewButton = document.createElement('button');
+        reviewButton.type = 'button';
+        reviewButton.className = 'btn btn-sm btn-primary';
+        reviewButton.textContent = 'Open A/B';
+        reviewButton.addEventListener('click', () => openAbReview(run.jobId));
+        actions.appendChild(reviewButton);
+      }
+
+      if (run.status === 'failed' && run.checkpoints.includes('japanese')) {
+        const resumeButton = document.createElement('button');
+        resumeButton.type = 'button';
+        resumeButton.className = 'btn btn-sm btn-primary';
+        resumeButton.textContent = 'Resume translation';
+        resumeButton.addEventListener('click', event => resumeSavedRun(run.jobId, event.currentTarget));
+        actions.appendChild(resumeButton);
+      }
+      row.appendChild(actions);
+      savedRunHistory.appendChild(row);
+    }
+  } catch (err) {
+    savedRunHistory.textContent = `Run history unavailable: ${err.message}`;
+  }
+}
+
+async function loadSavedRunLog(jobId) {
+  const response = await fetch(`/api/runs/${encodeURIComponent(jobId)}`);
+  const run = await response.json();
+  if (!response.ok) throw new Error(run.error || 'Could not load saved run log.');
+  globalLogHistory.replaceChildren();
+  globalLogCounter = 0;
+  for (const event of run.events) {
+    const row = document.createElement('div');
+    row.className = `log-entry ${event.type === 'error' ? 'error' : event.type === 'complete' ? 'success' : 'normal'}`;
+    const time = document.createElement('span');
+    time.className = 'log-time';
+    time.textContent = `[${new Date(event.timestamp).toLocaleTimeString()}]`;
+    const text = document.createElement('span');
+    text.className = 'log-text';
+    text.textContent = `[${run.jobId}/${event.step}] ${event.message}`;
+    row.append(time, document.createTextNode(' '), text);
+    globalLogHistory.appendChild(row);
+    globalLogCounter++;
+  }
+  updateLogBadges();
+}
+
+function openAbReview(runId) {
+  window.location.href = `/ab-review.html?runId=${encodeURIComponent(runId)}`;
+}
+
+async function resumeSavedRun(jobId, button) {
+  if (button) button.disabled = true;
+  try {
+    const response = await fetch('/api/retranslate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ jobId, translationMode: currentTranslationMode, translationProviders })
+    });
+    const data = await response.json();
+    if (!response.ok || !data.success) throw new Error(data.error || 'Resume failed.');
+
+    currentPipelineData = { jobId, videoStreamUrl: `/api/stream/${jobId}` };
+    activeSubtitlesData = data.subtitles;
+    step1Section.classList.add('hidden');
+    processingCard.classList.add('hidden');
+    step2PlayerSection.classList.remove('hidden');
+    mainVideoPlayer.src = currentPipelineData.videoStreamUrl;
+    mainVideoPlayer.load();
+    populateSubtitleSelect();
+    subLangSelect.value = activeSubtitlesData.en ? 'en' : 'ja';
+    switchSubtitleLanguage(subLangSelect.value);
+    activityLogModal.classList.add('hidden');
+    appendActivityLog(`[Resume] ${jobId} continued from its saved Japanese transcript.`, 'success');
+    await loadSavedRuns();
+  } catch (err) {
+    appendActivityLog(`[Resume Error] ${err.message}`, 'error');
+    alert(`Resume failed: ${err.message}`);
+    await loadSavedRuns();
+  }
+}
+
 // ==========================================
 // FULL PIPELINE EXECUTION (STEP 1 -> STEP 2)
 // ==========================================
@@ -1114,13 +1207,6 @@ async function handleStartPipeline() {
   formData.append('video', selectedFile);
   formData.append('targetLang', targetLang);
 
-  const hindiScript = (document.querySelector('input[name="hindiScript"]:checked') || {}).value || 'devanagari';
-  formData.append('hindiScript', hindiScript);
-
-  if (targetLang === 'hi' || targetLang === 'both') {
-    appendActivityLog(`Hindi script style: ${hindiScript === 'hinglish' ? 'Hinglish (Roman Script)' : 'Devanagari (देवनागरी)'}`, 'system');
-  }
-
   // Append Speech-to-Text, Translation Mode, & Translation Providers configurations
   formData.append('translationMode', currentTranslationMode);
   formData.append('transcriptionConfig', JSON.stringify(transcriptionConfig));
@@ -1134,6 +1220,8 @@ async function handleStartPipeline() {
     appendActivityLog(`[Engine Pipeline] Speech-to-Text: ${transcriptionConfig.model} | Translation: ${primaryProv.name} (${fallbackProvCount} fallback${fallbackProvCount === 1 ? '' : 's'})`, 'system');
   }
 
+  let activeRunId = null;
+  let pipelineFailure = null;
   try {
     const response = await fetch('/api/process', {
       method: 'POST',
@@ -1166,6 +1254,7 @@ async function handleStartPipeline() {
         if (!line.trim()) continue;
         try {
           const evt = JSON.parse(line);
+          if (evt.jobId) activeRunId = evt.jobId;
 
           if (evt.type === 'progress') {
             mainProgressBar.style.width = `${evt.percent}%`;
@@ -1184,8 +1273,8 @@ async function handleStartPipeline() {
             appendActivityLog('Pipeline completed successfully! Mounting Cinema Player...', 'success');
             finalPayload = evt.data;
           } else if (evt.type === 'error') {
+            pipelineFailure = evt.error;
             appendActivityLog(`❌ Error: ${evt.error}`, 'error');
-            throw new Error(evt.error);
           }
         } catch (e) {
           if (e.message !== 'Unexpected end of JSON input') {
@@ -1195,6 +1284,7 @@ async function handleStartPipeline() {
       }
     }
 
+    if (pipelineFailure) throw new Error(pipelineFailure);
     if (!finalPayload) {
       throw new Error('Pipeline finished without return data.');
     }
@@ -1216,7 +1306,7 @@ async function handleStartPipeline() {
       }
 
       // Populate Subtitle Options
-      populateSubtitleSelect(targetLang);
+      populateSubtitleSelect();
 
       // Select default subtitle track (English if present, else targetLang)
       const defaultTrack = activeSubtitlesData[targetLang] ? targetLang : (activeSubtitlesData.en ? 'en' : 'ja');
@@ -1227,13 +1317,15 @@ async function handleStartPipeline() {
 
   } catch (err) {
     appendActivityLog(`Pipeline error: ${err.message}`, 'error');
+    if (activeRunId) appendActivityLog(`Run ${activeRunId} is saved. Use Activity Log → Resume translation to continue from Japanese.`, 'system');
+    await loadSavedRuns();
     alert(`Processing Error: ${err.message}`);
     processingCard.classList.add('hidden');
     step1Section.classList.remove('hidden');
   }
 }
 
-function populateSubtitleSelect(targetLang) {
+function populateSubtitleSelect() {
   subLangSelect.innerHTML = '';
 
   const addOption = (val, text) => {
@@ -1245,15 +1337,11 @@ function populateSubtitleSelect(targetLang) {
     }
   };
 
-  const hindiLabel = (activeSubtitlesData && activeSubtitlesData.hi && activeSubtitlesData.hi.script === 'hinglish')
-    ? '🇮🇳 Hindi (Hinglish / Roman Script)'
-    : '🇮🇳 Hindi (हिन्दी / देवनागरी)';
-
   addOption('en', '🇬🇧 English (Translated)');
-  addOption('hi', hindiLabel);
   addOption('bi_en', '🌐 Bilingual (English + Japanese)');
-  addOption('bi_hi', `🌐 Bilingual (${activeSubtitlesData?.hi?.script === 'hinglish' ? 'Hinglish' : 'Hindi'} + Japanese)`);
   addOption('ja', '🇯🇵 Japanese (Original Dialogue)');
+  addOption('ab_a', 'A/B A · Current subtitles');
+  addOption('ab_b', 'A/B B · Shorter, past-only context');
 }
 
 function switchSubtitleLanguage(langKey) {
@@ -1276,7 +1364,7 @@ function switchSubtitleLanguage(langKey) {
     const trackEl = document.createElement('track');
     trackEl.kind = 'subtitles';
     trackEl.label = langKey.toUpperCase();
-    trackEl.srclang = langKey.split('_')[0];
+    trackEl.srclang = langKey.startsWith('ab_') ? 'en' : langKey.split('_')[0];
     trackEl.src = track.vttUrl;
     mainVideoPlayer.appendChild(trackEl);
 

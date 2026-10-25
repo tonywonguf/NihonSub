@@ -3,28 +3,30 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>NihonSub - Japanese AI Video Subtitler & Synchronized Player</title>
+  <title>NihonSub · Subtitler</title>
   <link rel="stylesheet" href="style.css">
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Noto+Sans+JP:wght@400;500;700&family=Noto+Sans+Devanagari:wght@400;500;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="program-guide.css">
 </head>
 <body>
   <div class="app-container">
     <!-- Header -->
     <header class="app-header">
       <div class="brand">
-        <div class="logo-icon">🎌</div>
+        <span class="nihon-mark" aria-hidden="true"><i></i><i></i></span>
         <div>
           <h1>NihonSub <span class="badge-ja">日本サブ</span></h1>
-          <p class="subtitle">Japanese Video AI Subtitler & Synchronized Player</p>
+          <p class="subtitle">Japanese video subtitler</p>
         </div>
       </div>
+      <nav class="primary-nav" aria-label="Main navigation">
+        <a class="is-active" href="/" aria-current="page">Subtitler</a>
+        <a href="/ab-review.html">A/B experiments</a>
+      </nav>
       <div class="header-actions">
         <button id="activityLogToggleBtn" class="btn btn-ghost" title="View Full Activity Log">
-          📋 Activity Log <span id="logBadgeCount" class="badge-mini">0</span>
+          Activity log <span id="logBadgeCount" class="badge-mini">0</span>
         </button>
-        <button id="settingsBtn" class="btn btn-ghost" title="Settings & Custom APIs">⚙️ Settings</button>
+        <button id="settingsBtn" class="btn btn-ghost" title="Settings & Custom APIs">Settings</button>
       </div>
     </header>
 
@@ -40,8 +42,7 @@
         <!-- Video Upload Dropzone -->
         <div class="upload-dropzone" id="dropZone">
           <input type="file" id="videoFileInput" accept="video/mp4,video/x-matroska,video/webm,video/quicktime,video/x-msvideo" hidden>
-          <div class="dropzone-icon">🎬</div>
-          <h3>Select or Drop a Japanese Video</h3>
+          <h3>Select or drop a Japanese video</h3>
           <p class="dropzone-desc">Supports MP4, MKV, WebM, MOV, AVI (up to 2GB)</p>
           <button type="button" class="btn btn-primary" id="browseBtn">Browse Video File</button>
           
@@ -64,31 +65,8 @@
             <div class="radio-pill-group">
               <label class="radio-pill">
                 <input type="radio" name="targetLang" value="en" checked>
-                <span>🇬🇧 English (Default)</span>
+                <span>🇬🇧 English subtitles</span>
               </label>
-              <label class="radio-pill">
-                <input type="radio" name="targetLang" value="hi">
-                <span>🇮🇳 Hindi (हिन्दी)</span>
-              </label>
-              <label class="radio-pill">
-                <input type="radio" name="targetLang" value="both">
-                <span>🌐 Both (English + Hindi)</span>
-              </label>
-            </div>
-
-            <!-- Hindi Script / Format Sub-Selector (Devanagari vs Hinglish) -->
-            <div id="hindiScriptRow" class="sub-config-row hidden">
-              <label class="sub-config-label">Hindi Subtitle Script:</label>
-              <div class="sub-radio-pill-group">
-                <label class="sub-radio-pill">
-                  <input type="radio" name="hindiScript" value="devanagari" checked>
-                  <span>🕉️ Devanagari (देवनागरी: "नमस्ते, आप कैसे हैं?")</span>
-                </label>
-                <label class="sub-radio-pill">
-                  <input type="radio" name="hindiScript" value="hinglish">
-                  <span>🔤 Hinglish (Roman Script: "Namaste, aap kaise hain?")</span>
-                </label>
-              </div>
             </div>
           </div>
 
@@ -109,7 +87,7 @@
               </label>
             </div>
             <div class="mode-description-box" id="modeDescriptionBox">
-              <span class="mode-desc-icon" id="modeDescIcon">⚡</span>
+              <span class="mode-desc-icon" id="modeDescIcon">V1</span>
               <span class="mode-desc-text" id="modeDescText">
                 <strong>Fast Fallback (v1):</strong> Uses your primary translation model and automatically fails over in real-time to backup models if rate limits (429) or timeouts occur.
               </span>
@@ -118,7 +96,7 @@
 
           <!-- Custom Translation / Agent Notice -->
           <div class="custom-api-status-row">
-            <span class="text-muted" id="activeTranslatorNotice">Using Built-in AI Translator (Whisper Large-v3 + Contextual LLM)</span>
+            <span class="text-muted" id="activeTranslatorNotice">Local Parakeet transcription · Qwen translation</span>
             <button type="button" class="btn-link" id="configureTranslatorLink">Manage Multi-AI Models & Settings ➔</button>
           </div>
         </div>
@@ -127,7 +105,6 @@
         <div class="action-footer">
           <button id="generateBtn" class="btn btn-action" disabled>
             <span class="btn-text">Generate Subtitles & Play</span>
-            <span class="btn-icon">⚡</span>
           </button>
         </div>
       </section>
@@ -188,10 +165,8 @@
               <label for="subLangSelect">Subtitle Track:</label>
               <select id="subLangSelect" class="styled-select">
                 <option value="en">English</option>
-                <option value="hi">Hindi (हिन्दी)</option>
                 <option value="ja">Japanese (Original)</option>
                 <option value="bi_en">Bilingual (English + Japanese)</option>
-                <option value="bi_hi">Bilingual (Hindi + Japanese)</option>
               </select>
             </div>
 
@@ -298,28 +273,29 @@
               <span class="callout-icon">🎙️</span>
               <div>
                 <strong>Japanese Audio Speech Recognition (ASR):</strong>
-                Whisper converts Japanese audio and emotional vocalizations into timestamped dialogue. You can use Groq's high-speed Whisper Large-v3 or any OpenAI-compatible transcription endpoint.
+                Transcribe Japanese audio into timestamped dialogue with Groq Whisper, an OpenAI-compatible endpoint, or local NVIDIA Parakeet (CPU inference).
               </div>
             </div>
 
             <div class="settings-section-card">
               <div class="preset-chips">
                 <span style="font-size:0.8rem; color:var(--text-muted);">Quick Presets:</span>
-                <button type="button" class="btn-chip" id="presetGroqWhisperBtn">⚡ Groq Whisper Large-v3 (Default / Fast)</button>
+                <button type="button" class="btn-chip" id="presetGroqWhisperBtn">⚡ Groq Whisper Large-v3</button>
                 <button type="button" class="btn-chip" id="presetOpenAIWhisperBtn">🌐 OpenAI Whisper-1</button>
                 <button type="button" class="btn-chip" id="presetLocalWhisperBtn">💻 Local Whisper / Endpoint</button>
+                <button type="button" class="btn-chip" id="presetParakeetBtn">🦜 Local Parakeet Japanese</button>
               </div>
 
               <div class="settings-grid-2col">
                 <div class="input-group">
                   <label for="transcriptionEndpointInput">Transcription API Base URL (OpenAI-compatible)</label>
-                  <input type="url" id="transcriptionEndpointInput" placeholder="https://api.groq.com/openai/v1" class="styled-input" value="https://api.groq.com/openai/v1">
-                  <small class="help-text">Base URL (e.g. https://api.groq.com/openai/v1 or http://localhost:8000/v1)</small>
+                  <input type="url" id="transcriptionEndpointInput" placeholder="http://localhost:8000/v1" class="styled-input" value="http://localhost:8000/v1">
+                  <small class="help-text">Base URL (local Parakeet uses http://localhost:8000/v1)</small>
                 </div>
                 <div class="input-group">
-                  <label for="transcriptionModelInput">Whisper Model Name</label>
-                  <input type="text" id="transcriptionModelInput" placeholder="whisper-large-v3" class="styled-input" value="whisper-large-v3">
-                  <small class="help-text">e.g. whisper-large-v3, whisper-large-v3-turbo, whisper-1</small>
+                  <label for="transcriptionModelInput">Transcription Model Name</label>
+                  <input type="text" id="transcriptionModelInput" placeholder="nvidia/parakeet-tdt_ctc-0.6b-ja" class="styled-input" value="nvidia/parakeet-tdt_ctc-0.6b-ja">
+                  <small class="help-text">Use the Local Parakeet preset for nvidia/parakeet-tdt_ctc-0.6b-ja.</small>
                 </div>
               </div>
 
@@ -329,7 +305,7 @@
                   <input type="password" id="transcriptionApiKeyInput" placeholder="gsk_... or sk-..." class="styled-input">
                   <button type="button" class="btn-toggle-eye" id="toggleTransKeyEye" title="Show/Hide Key">👁️</button>
                 </div>
-                <small class="help-text">Your API key for the speech recognition service.</small>
+                <small class="help-text">Not needed for local Parakeet. Other services may require a key.</small>
               </div>
 
               <div class="provider-card-footer">
@@ -375,11 +351,11 @@
             <!-- Toolbar & Presets -->
             <div class="providers-toolbar">
               <div class="preset-chips" style="margin-bottom:0;">
-                <span style="font-size:0.8rem; color:var(--text-muted);">Add Preset:</span>
+                <span style="font-size:0.8rem; color:var(--text-muted);">Provider presets:</span>
                 <button type="button" class="btn-chip" id="addGroqProviderBtn">+ Groq (Qwen 3.8)</button>
                 <button type="button" class="btn-chip" id="addTopToolsProviderBtn">+ top-tools-ai.com</button>
                 <button type="button" class="btn-chip" id="addOpenRouterProviderBtn">+ OpenRouter (DeepSeek)</button>
-                <button type="button" class="btn-chip" id="addOllamaProviderBtn">+ Local Ollama</button>
+                <button type="button" class="btn-chip" id="addOllamaProviderBtn">Use Local Qwen3 4B only</button>
               </div>
               <button type="button" class="btn btn-primary btn-sm" id="addCustomProviderBtn">
                 + Add Another API Key
@@ -425,8 +401,15 @@
         </div>
         <div class="modal-body log-modal-body">
           <div class="activity-log-toolbar">
+            <span class="log-info-label">Saved runs and resumable checkpoints:</span>
+            <button type="button" class="btn btn-sm btn-outline" id="refreshRunHistoryBtn">Refresh</button>
+          </div>
+          <div class="saved-runs-list" id="savedRunHistory">
+            <div class="log-entry system">Loading saved runs…</div>
+          </div>
+          <div class="activity-log-toolbar">
             <span class="log-info-label">Full chronological record across all steps:</span>
-            <button type="button" class="btn btn-sm btn-outline" id="clearAllLogsBtn">Clear History</button>
+            <button type="button" class="btn btn-sm btn-outline" id="clearAllLogsBtn">Clear Session Logs</button>
           </div>
           <div class="global-log-history" id="globalLogHistory">
             <div class="log-entry system"><span class="log-time">[System]</span> <span class="log-text">Session initialized. All pipeline actions will be recorded here.</span></div>
