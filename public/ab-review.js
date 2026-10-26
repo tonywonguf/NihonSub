@@ -17,6 +17,7 @@ const videoTime = document.getElementById('videoTime');
 const railCurrentTime = document.getElementById('railCurrentTime');
 const videoDuration = document.getElementById('videoDuration');
 const timeRail = document.getElementById('timeRail');
+const timeRailRow = timeRail.closest('.time-rail-row');
 const timePlayhead = document.getElementById('timePlayhead');
 const captionA = document.getElementById('captionA');
 const captionB = document.getElementById('captionB');
@@ -74,9 +75,15 @@ function renderExperimentList() {
   experimentCount.textContent = `${runs.length} saved`;
 
   if (!runs.length) {
-    const empty = document.createElement('p');
-    empty.className = 'loading-note';
-    empty.textContent = 'No saved A/B experiments yet. Create a run from the subtitler, then refresh this page.';
+    const empty = document.createElement('div');
+    empty.className = 'empty-library';
+    const message = document.createElement('p');
+    message.textContent = 'No saved experiments yet.';
+    const link = document.createElement('a');
+    link.className = 'empty-library-link';
+    link.href = '/';
+    link.textContent = 'Open Subtitler';
+    empty.append(message, link);
     experimentList.appendChild(empty);
     return;
   }
@@ -164,6 +171,9 @@ function updateTrack(list, segments, current) {
 function updatePlayback() {
   const currentTime = Number.isFinite(reviewVideo.currentTime) ? reviewVideo.currentTime : 0;
   const duration = Number.isFinite(reviewVideo.duration) ? reviewVideo.duration : 0;
+  const hasDuration = duration > 0;
+  videoTime.classList.toggle('hidden', !hasDuration);
+  timeRailRow.classList.toggle('hidden', !hasDuration);
   const progress = duration > 0 ? Math.min(100, (currentTime / duration) * 100) : 0;
   const activeA = getActiveCue(aSegments, currentTime);
   const activeB = getActiveCue(bSegments, currentTime);
@@ -209,6 +219,9 @@ function clearComparison() {
   captionA.hidden = true;
   captionB.hidden = true;
   captionReference.hidden = true;
+  videoTime.classList.add('hidden');
+  timeRailRow.classList.add('hidden');
+  reviewVideo.controls = false;
   reviewVideo.pause();
   reviewVideo.removeAttribute('src');
   reviewVideo.load();
@@ -270,6 +283,7 @@ async function selectExperiment(run) {
 
     const videoJobId = run.metadata?.videoJobId;
     if (videoJobId) {
+      reviewVideo.controls = true;
       reviewVideo.src = `/api/stream/${encodeURIComponent(videoJobId)}`;
       reviewVideo.load();
     } else {
@@ -300,7 +314,7 @@ async function loadExperiments() {
 
     if (!runs.length) {
       selectedExperiment.classList.add('hidden');
-      setStatus('No saved A/B runs were found. Start in the subtitler, then return here.');
+      setStatus('');
       return;
     }
 

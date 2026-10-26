@@ -424,8 +424,8 @@ function setupEventListeners() {
     const isEnsemble = currentTranslationMode === 'ensemble' && translationProviders.length > 1;
 
     const modeSummary = isEnsemble
-      ? `• Mode: 🏆 Multi-Model Ensemble Voting (${translationProviders.length} models in parallel)`
-      : `• Mode: ⚡ Fast Fallback (${primaryProv.name} with ${fallbackCount} failover)`;
+      ? `• Mode: Multi-Model Ensemble Voting (${translationProviders.length} models in parallel)`
+      : `• Mode: Fast Fallback (${primaryProv.name} with ${fallbackCount} failover)`;
 
     const confirmed = confirm(
       `Re-translate this video?\n\n` +
@@ -438,7 +438,7 @@ function setupEventListeners() {
 
     sendToTranslatorBtn.disabled = true;
     const origBtnText = sendToTranslatorBtn.innerHTML;
-    sendToTranslatorBtn.innerHTML = '⏳ Translating...';
+    sendToTranslatorBtn.textContent = 'Translating…';
     appendActivityLog(`[Re-translation] Dispatched via ${isEnsemble ? 'Multi-Model Ensemble Voting' : primaryProv.name}...`, 'system');
 
     try {
@@ -469,7 +469,7 @@ function setupEventListeners() {
       switchSubtitleLanguage(subLangSelect.value);
 
       appendActivityLog(`[Re-translation] Subtitles updated successfully in cinema player!`, 'system');
-      alert(`🎉 Re-translation completed via ${primaryProv.name}!\nSubtitles and interactive transcript have been refreshed.`);
+      alert(`Re-translation completed via ${primaryProv.name}.\nSubtitles and interactive transcript have been refreshed.`);
     } catch (err) {
       appendActivityLog(`[Re-translation Error] ${err.message}`, 'error');
       alert(`Re-translation failed: ${err.message}`);
@@ -587,7 +587,8 @@ function setupEventListeners() {
     toggleTransKeyEye.addEventListener('click', () => {
       const isPass = transcriptionApiKeyInput.type === 'password';
       transcriptionApiKeyInput.type = isPass ? 'text' : 'password';
-      toggleTransKeyEye.textContent = isPass ? '🙈' : '👁️';
+      toggleTransKeyEye.textContent = isPass ? 'Hide' : 'Show';
+      toggleTransKeyEye.title = isPass ? 'Hide API key' : 'Show API key';
     });
   }
 
@@ -596,21 +597,21 @@ function setupEventListeners() {
     presetGroqWhisperBtn.addEventListener('click', () => {
       transcriptionEndpointInput.value = 'https://api.groq.com/openai/v1';
       transcriptionModelInput.value = 'whisper-large-v3';
-      showSettingsNotice('⚡ Groq Whisper Large-v3 preset applied. Enter your API key.');
+      showSettingsNotice('Groq Whisper Large-v3 preset applied. Enter your API key.');
     });
   }
   if (presetOpenAIWhisperBtn) {
     presetOpenAIWhisperBtn.addEventListener('click', () => {
       transcriptionEndpointInput.value = 'https://api.openai.com/v1';
       transcriptionModelInput.value = 'whisper-1';
-      showSettingsNotice('🌐 Preset applied: OpenAI Whisper-1. Enter your OpenAI API Key.');
+      showSettingsNotice('Preset applied: OpenAI Whisper-1. Enter your OpenAI API key.');
     });
   }
   if (presetLocalWhisperBtn) {
     presetLocalWhisperBtn.addEventListener('click', () => {
       transcriptionEndpointInput.value = 'http://localhost:8000/v1';
       transcriptionModelInput.value = 'whisper-1';
-      showSettingsNotice('💻 Preset applied: Local Whisper Endpoint (http://localhost:8000/v1).');
+      showSettingsNotice('Preset applied: Local Whisper endpoint (http://localhost:8000/v1).');
     });
   }
 
@@ -618,7 +619,7 @@ function setupEventListeners() {
     presetParakeetBtn.addEventListener('click', () => {
       transcriptionModelInput.value = 'nvidia/parakeet-tdt_ctc-0.6b-ja';
       transcriptionApiKeyInput.value = '';
-      showSettingsNotice('🦜 Local Parakeet selected. Install the local runtime; transcription runs on CPU on this PC.');
+      showSettingsNotice('Local Parakeet selected. Install the local runtime; transcription runs on CPU on this PC.');
     });
   }
 
@@ -645,12 +646,12 @@ function setupEventListeners() {
         });
         const data = await res.json();
         if (res.ok && data.success) {
-          showTranscriptionTestStatus('success', `✅ ${data.message || 'Connected successfully!'}`);
+          showTranscriptionTestStatus('success', `Connected: ${data.message || 'Connection successful.'}`);
         } else {
-          showTranscriptionTestStatus('error', `❌ ${data.error || 'Connection failed'}`);
+          showTranscriptionTestStatus('error', `Error: ${data.error || 'Connection failed.'}`);
         }
       } catch (err) {
-        showTranscriptionTestStatus('error', `❌ Network error: ${err.message}`);
+        showTranscriptionTestStatus('error', `Network error: ${err.message}`);
       } finally {
         testTranscriptionBtn.disabled = false;
       }
@@ -805,7 +806,7 @@ function setupEventListeners() {
       });
       const data = await res.json();
       if (data.success) {
-        settingsMessage.textContent = '✅ All settings and translation fallback providers saved successfully!';
+        settingsMessage.textContent = 'All settings and translation fallback providers saved successfully.';
         settingsMessage.className = 'settings-msg success';
         settingsMessage.classList.remove('hidden');
         checkConfig();
@@ -814,7 +815,7 @@ function setupEventListeners() {
         throw new Error(data.error || 'Server rejected settings.');
       }
     } catch (err) {
-      settingsMessage.textContent = `❌ Failed to save to server: ${err.message}`;
+      settingsMessage.textContent = `Failed to save to server: ${err.message}`;
       settingsMessage.className = 'settings-msg error';
       settingsMessage.classList.remove('hidden');
     }
@@ -866,7 +867,7 @@ function renderTranslationProviders() {
 
   translationProviders.forEach((prov, idx) => {
     const isPrimary = idx === 0;
-    const priorityLabel = isPrimary ? '🟢 #1 PRIMARY' : `🟡 #${idx + 1} FALLBACK`;
+    const priorityLabel = isPrimary ? '#1 PRIMARY' : `#${idx + 1} FALLBACK`;
     const priorityClass = isPrimary ? 'primary' : 'fallback';
     const cardClass = isPrimary ? 'is-primary' : 'is-fallback';
 
@@ -883,7 +884,7 @@ function renderTranslationProviders() {
         <div class="provider-actions">
           <button type="button" class="btn-icon-tiny btn-move-up" data-idx="${idx}" title="Move Up (Increase Priority)" ${isPrimary ? 'disabled' : ''}>▲</button>
           <button type="button" class="btn-icon-tiny btn-move-down" data-idx="${idx}" title="Move Down (Decrease Priority)" ${idx === translationProviders.length - 1 ? 'disabled' : ''}>▼</button>
-          <button type="button" class="btn-icon-tiny danger btn-delete-provider" data-idx="${idx}" title="Remove this provider" ${translationProviders.length <= 1 ? 'disabled' : ''}>🗑️</button>
+          <button type="button" class="btn-icon-tiny danger btn-delete-provider" data-idx="${idx}" title="Remove this provider" ${translationProviders.length <= 1 ? 'disabled' : ''}>×</button>
         </div>
       </div>
 
@@ -902,13 +903,13 @@ function renderTranslationProviders() {
         <label>API Key</label>
         <div class="password-input-wrap">
           <input type="password" class="styled-input provider-apikey-input" value="${escapeHtml(prov.apiKey || '')}" placeholder="API key (gsk_..., sk-..., etc.)">
-          <button type="button" class="btn-toggle-eye btn-toggle-prov-eye" title="Show/Hide Key">👁️</button>
+          <button type="button" class="btn-toggle-eye btn-toggle-prov-eye" title="Show API key">Show</button>
         </div>
       </div>
 
       <div class="provider-card-footer">
         <button type="button" class="btn btn-secondary btn-sm btn-test-prov" data-id="${prov.id}">
-          🧪 Test Connection
+          Test Connection
         </button>
         <div class="provider-test-status hidden" id="status_${prov.id}"></div>
       </div>
@@ -931,7 +932,8 @@ function renderTranslationProviders() {
     eyeBtn.addEventListener('click', () => {
       const isPass = keyInput.type === 'password';
       keyInput.type = isPass ? 'text' : 'password';
-      eyeBtn.textContent = isPass ? '🙈' : '👁️';
+      eyeBtn.textContent = isPass ? 'Hide' : 'Show';
+      eyeBtn.title = isPass ? 'Hide API key' : 'Show API key';
     });
 
     testBtn.addEventListener('click', async () => {
@@ -941,7 +943,7 @@ function renderTranslationProviders() {
 
       if (!apiKey) {
         statusDiv.className = 'provider-test-status error';
-        statusDiv.textContent = '❌ Please enter an API key to test.';
+        statusDiv.textContent = 'Enter an API key to test.';
         statusDiv.classList.remove('hidden');
         return;
       }
@@ -960,14 +962,14 @@ function renderTranslationProviders() {
         const data = await res.json();
         if (res.ok && data.success) {
           statusDiv.className = 'provider-test-status success';
-          statusDiv.innerHTML = `✅ <strong>Connected!</strong> Reply: <em>"${escapeHtml(data.reply)}"</em>`;
+          statusDiv.innerHTML = `<strong>Connected.</strong> Reply: <em>"${escapeHtml(data.reply)}"</em>`;
         } else {
           statusDiv.className = 'provider-test-status error';
-          statusDiv.textContent = `❌ ${data.error || 'Connection failed'}`;
+          statusDiv.textContent = `Error: ${data.error || 'Connection failed.'}`;
         }
       } catch (err) {
         statusDiv.className = 'provider-test-status error';
-        statusDiv.textContent = `❌ Network error: ${err.message}`;
+        statusDiv.textContent = `Network error: ${err.message}`;
       } finally {
         testBtn.disabled = false;
       }
@@ -1215,7 +1217,7 @@ async function handleStartPipeline() {
   const primaryProv = translationProviders[0] || { name: 'Groq LPU', model: 'qwen3.8-27b' };
   const fallbackProvCount = Math.max(0, translationProviders.length - 1);
   if (currentTranslationMode === 'ensemble' && translationProviders.length > 1) {
-    appendActivityLog(`[Engine Pipeline] Speech-to-Text: ${transcriptionConfig.model} | 🏆 Ensemble: Dispatching to ${translationProviders.length} models in parallel with consensus clustering & voting`, 'system');
+    appendActivityLog(`[Engine Pipeline] Speech-to-Text: ${transcriptionConfig.model} | Ensemble: Dispatching to ${translationProviders.length} models in parallel with consensus clustering & voting`, 'system');
   } else {
     appendActivityLog(`[Engine Pipeline] Speech-to-Text: ${transcriptionConfig.model} | Translation: ${primaryProv.name} (${fallbackProvCount} fallback${fallbackProvCount === 1 ? '' : 's'})`, 'system');
   }
@@ -1263,7 +1265,7 @@ async function handleStartPipeline() {
             appendActivityLog(evt.message, 'normal');
 
             if (evt.segmentsCount) {
-              transcriptionBadge.textContent = `✅ ${evt.segmentsCount} segments (${evt.durationMinutes}m)`;
+              transcriptionBadge.textContent = `${evt.segmentsCount} segments (${evt.durationMinutes}m)`;
               transcriptionBadge.classList.remove('hidden');
             }
           } else if (evt.type === 'complete') {
@@ -1274,7 +1276,7 @@ async function handleStartPipeline() {
             finalPayload = evt.data;
           } else if (evt.type === 'error') {
             pipelineFailure = evt.error;
-            appendActivityLog(`❌ Error: ${evt.error}`, 'error');
+            appendActivityLog(`Error: ${evt.error}`, 'error');
           }
         } catch (e) {
           if (e.message !== 'Unexpected end of JSON input') {
@@ -1337,9 +1339,9 @@ function populateSubtitleSelect() {
     }
   };
 
-  addOption('en', '🇬🇧 English (Translated)');
-  addOption('bi_en', '🌐 Bilingual (English + Japanese)');
-  addOption('ja', '🇯🇵 Japanese (Original Dialogue)');
+  addOption('en', 'English (Translated)');
+  addOption('bi_en', 'Bilingual (English + Japanese)');
+  addOption('ja', 'Japanese (Original Dialogue)');
   addOption('ab_a', 'A/B A · Current subtitles');
   addOption('ab_b', 'A/B B · Shorter, past-only context');
 }
@@ -1457,7 +1459,7 @@ function renderTranscript(segments) {
     if (seg.ensemble && seg.ensemble.candidates && seg.ensemble.candidates.length > 0) {
       const votes = seg.ensemble.consensusCount || 1;
       const total = seg.ensemble.totalVotes || seg.ensemble.candidates.length;
-      ensembleBadgeHtml = `<button type="button" class="ensemble-badge-btn" title="Inspect model candidates & consensus votes" data-index="${index}">🏆 ${votes}/${total} Consensus</button>`;
+      ensembleBadgeHtml = `<button type="button" class="ensemble-badge-btn" title="Inspect model candidates & consensus votes" data-index="${index}">${votes}/${total} Consensus</button>`;
     }
 
     item.innerHTML = `
@@ -1513,7 +1515,7 @@ function openCandidateInspector(seg, index) {
 
   const consensusVotes = seg.ensemble?.consensusCount || 1;
   const totalVotes = seg.ensemble?.totalVotes || seg.ensemble?.candidates?.length || 1;
-  inspectorConsensusBadge.textContent = `🗳️ ${consensusVotes} of ${totalVotes} Models in Agreement (${Math.round((consensusVotes / totalVotes) * 100)}% Consensus)`;
+  inspectorConsensusBadge.textContent = `${consensusVotes} of ${totalVotes} Models in Agreement (${Math.round((consensusVotes / totalVotes) * 100)}% consensus)`;
 
   renderCandidateList(seg, index);
   candidateInspectorModal.classList.remove('hidden');
@@ -1540,8 +1542,8 @@ function renderCandidateList(seg, index) {
           <span class="candidate-prov-model">(${escapeHtml(cand.model)})</span>
         </div>
         <div class="candidate-badges">
-          ${isWinner ? '<span class="candidate-winner-tag">🏆 Active Subtitle</span>' : ''}
-          ${cand.isOutlier ? '<span class="candidate-outlier-tag">⚠️ Discarded Outlier</span>' : `<span class="candidate-score-tag">Score: ${cand.score}/100</span>`}
+          ${isWinner ? '<span class="candidate-winner-tag">Active Subtitle</span>' : ''}
+          ${cand.isOutlier ? '<span class="candidate-outlier-tag">Discarded Outlier</span>' : `<span class="candidate-score-tag">Score: ${cand.score}/100</span>`}
           <span class="candidate-cps-tag">${cand.cps || (cand.text.length / Math.max(0.6, seg.end - seg.start)).toFixed(1)} CPS</span>
         </div>
       </div>
