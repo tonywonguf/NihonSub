@@ -2,12 +2,12 @@ import dns from 'dns';
 dns.setDefaultResultOrder('ipv4first');
 
 import express from 'express';
-import cors from 'cors';
 import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
 import dotenv from 'dotenv';
 import { fileURLToPath } from 'url';
+import { isAllowedLocalRequest } from './localSecurity.js';
 
 import {
   transcribeAudio,
@@ -28,7 +28,12 @@ import { extractOriginalAudio, prepareTranscriptionAudio, getAudioMetadata, spli
 import { saveSubtitles, generateBilingualSegments, parseVttToSegments } from './subtitleGenerator.js';
 import { createRunStore } from './runStore.js';
 import { appendExperimentDecision } from './experimentDecisions.js';
-import { parseReferenceSubtitles } from './referenceSubtitles.js';
+import {
+  chooseDefaultSubtitleTrack,
+  extractEmbeddedSubtitleTrack,
+  getEmbeddedSubtitleTracks,
+  parseReferenceSubtitles
+} from './referenceSubtitles.js';
 
 dotenv.config();
 
@@ -37,6 +42,8 @@ const __dirname = path.dirname(__filename);
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+const HOST = '127.0.0.1';
+const isValidJobId = jobId => typeof jobId === 'string' && /^[a-zA-Z0-9_-]+$/.test(jobId);
 
 // Directories
 const UPLOADS_DIR = path.join(__dirname, 'storage', 'uploads');
@@ -85,8 +92,28 @@ function decodeSubtitleText(buffer) {
   return new TextDecoder(encoding, { fatal: true }).decode(buffer);
 }
 
-app.use(cors());
-app.use(express.json());
+function getUploadedVideoPath(jobId) {
+  if (!isValidJobId(jobId)) return null;
+  const fileName = fs.readdirSync(UPLOADS_DIR).find(file => path.parse(file).name === jobId);
+  return fileName ? path.join(UPLOADS_DIR, fileName) : null;
+}
+
+app.disable('x-powered-by');
+app.use((req, res, next) => {
+  res.set({
+    'X-Content-Type-Options': 'nosniff',
+    'X-Frame-Options': 'DENY',
+    'Referrer-Policy': 'no-referrer',
+    'Permissions-Policy': 'camera=(), microphone=(), geolocation=()'
+  });
+
+  const host = req.get('host');
+  if (!isAllowedLocalRequest(host, req.get('origin'), req.protocol, PORT)) {
+    return res.status(403).send('Local access only; cross-origin requests are not allowed.');
+  }
+  next();
+});
+app.use(express.json({ limit: '1mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
 
 // In-memory configuration store initialized from environment
@@ -368,17 +395,46 @@ app.post('/api/runs/:jobId/reference-subtitles', (req, res, next) => {
       ? 0
       : Number(req.body.offsetSeconds);
     const content = decodeSubtitleText(req.file.buffer);
-    const segments = parseReferenceSubtitles(content, { offsetSeconds });
     const reference = {
       fileName: fileName || `reference${extension}`,
       format: extension.slice(1),
       offsetSeconds,
-      segments
+      segments: parseReferenceSubtitles(content, { offsetSeconds })
     };
     runStore.saveCheckpoint(req.params.jobId, 'ab_reference', reference);
-    return res.json({ success: true, fileName: reference.fileName, cueCount: segments.length });
+    return res.json({ success: true, fileName: reference.fileName, cueCount: reference.segments.length });
   } catch (error) {
     return res.status(400).json({ error: error.message || 'Could not save reference subtitles.' });
+  }
+});
+
+app.get('/api/runs/:jobId/embedded-reference', async (req, res) => {
+  try {
+    const run = runStore.get(req.params.jobId);
+    if (!run) return res.status(404).json({ error: 'Run not found.' });
+    if (run.metadata?.kind !== 'ab-test') return res.status(400).json({ error: 'Embedded references are only available for A/B runs.' });
+
+    const videoPath = getUploadedVideoPath(run.metadata.videoJobId);
+    if (!videoPath) {
+      return res.json({ available: false, tracks: [], selectedTrack: null, segments: [], message: 'This experiment has no available source video.' });
+    }
+
+    const tracks = await getEmbeddedSubtitleTracks(videoPath);
+    if (!tracks.length) {
+      return res.json({ available: false, tracks, selectedTrack: null, segments: [], message: 'No supported text subtitle tracks are embedded in this video.' });
+    }
+
+    const selectedTrack = chooseDefaultSubtitleTrack(tracks);
+    if (!selectedTrack) return res.json({ available: false, tracks: [], selectedTrack: null, segments: [], message: 'No embedded subtitle track could be selected.' });
+
+    const offsetSeconds = req.query.offsetSeconds === undefined || req.query.offsetSeconds === ''
+      ? 0
+      : Number(req.query.offsetSeconds);
+    const content = await extractEmbeddedSubtitleTrack(videoPath, selectedTrack.index);
+    const segments = parseReferenceSubtitles(content, { offsetSeconds });
+    return res.json({ available: true, selectedTrack, offsetSeconds, segments });
+  } catch (error) {
+    return res.status(400).json({ error: error.message || 'Could not load embedded subtitles.' });
   }
 });
 
@@ -559,6 +615,8 @@ app.post('/api/step3-prepare-transcription', async (req, res) => {
     return res.status(400).json({ error: 'Job ID is required.' });
   }
 
+  if (!isValidJobId(jobId)) return res.status(400).json({ error: 'A valid job ID is required.' });
+
   const originalAudioPath = path.join(AUDIO_DIR, `${jobId}_original.mp3`);
   if (!fs.existsSync(originalAudioPath)) {
     return res.status(404).json({ error: 'Original audio not found for this job.' });
@@ -603,8 +661,8 @@ app.post('/api/step4-transcribe', async (req, res) => {
   };
 
   const { jobId, customApiKey } = req.body;
-  if (!jobId) {
-    sendLog('error', 'Job ID is required.');
+  if (!isValidJobId(jobId)) {
+    sendLog('error', 'A valid job ID is required.');
     return res.end();
   }
 
@@ -710,6 +768,8 @@ app.post('/api/step4-transcribe', async (req, res) => {
  */
 app.get('/api/audio/:jobId/:type?', (req, res) => {
   const { jobId, type } = req.params;
+  if (!isValidJobId(jobId)) return res.status(400).send('Invalid job ID.');
+  if (type && !['original', 'transcribe'].includes(type)) return res.status(400).send('Invalid audio type.');
   const fileName = type === 'transcribe' ? `${jobId}_transcribe.mp3` : (type === 'original' ? `${jobId}_original.mp3` : `${jobId}.mp3`);
   let audioPath = path.join(AUDIO_DIR, fileName);
 
@@ -1111,7 +1171,11 @@ app.post('/api/process', upload.single('video'), async (req, res) => {
  */
 app.get('/api/subtitles/:jobId/:lang/:format', (req, res) => {
   const { jobId, lang, format } = req.params;
-  const ext = format === 'srt' ? 'srt' : 'vtt';
+  if (!isValidJobId(jobId)) return res.status(400).send('Invalid job ID.');
+  if (!['ja', 'en', 'bi_en'].includes(lang) || !['srt', 'vtt'].includes(format)) {
+    return res.status(400).send('Invalid subtitle language or format.');
+  }
+  const ext = format;
   const filePath = path.join(SUBTITLES_DIR, `${jobId}_${lang}.${ext}`);
 
   if (!fs.existsSync(filePath)) {
@@ -1130,14 +1194,8 @@ app.get('/api/subtitles/:jobId/:lang/:format', (req, res) => {
  */
 app.get('/api/stream/:jobId', (req, res) => {
   const { jobId } = req.params;
-  const files = fs.readdirSync(UPLOADS_DIR);
-  const matched = files.find(f => f.startsWith(jobId));
-
-  if (!matched) {
-    return res.status(404).send('Video not found.');
-  }
-
-  const videoPath = path.join(UPLOADS_DIR, matched);
+  const videoPath = getUploadedVideoPath(jobId);
+  if (!videoPath) return res.status(404).send('Video not found.');
   const stat = fs.statSync(videoPath);
   const fileSize = stat.size;
   const range = req.headers.range;
@@ -1167,10 +1225,11 @@ app.get('/api/stream/:jobId', (req, res) => {
 });
 
 // Start Server
-app.listen(PORT, () => {
+app.listen(PORT, HOST, () => {
   console.log(`====================================================`);
   console.log(`  🎌 NihonSub (日本サブ) - Server Running!`);
   console.log(`  🌐 URL: http://localhost:${PORT}`);
+  console.log(`  🔒 Bound to ${HOST}:${PORT} (loopback only)`);
   console.log(`  📁 Workspace: ${__dirname}`);
   console.log(`====================================================`);
 });

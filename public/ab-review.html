@@ -103,21 +103,21 @@
             <div class="reference-heading">
               <div>
                 <h3 id="referenceTitle">Reference subtitles</h3>
-                <p>Optional comparison track only; it will not change translation prompts or outputs.</p>
+                <p>Loads an embedded track when available. You can also attach an SRT or WebVTT file; neither source changes translation prompts or outputs.</p>
               </div>
-              <span id="referenceStatus" class="reference-status" role="status">No reference attached.</span>
+              <span id="referenceStatus" class="reference-status" role="status">Checking the source video…</span>
             </div>
             <form id="referenceForm" class="reference-form">
-              <label for="referenceFile">Subtitle file (.srt or .vtt)
-                <input id="referenceFile" name="file" type="file" accept=".srt,.vtt,text/vtt,application/x-subrip" required>
+              <label for="referenceFile">Reference subtitle file (.srt or .vtt)
+                <input id="referenceFile" name="file" type="file" accept=".srt,.vtt,text/vtt,application/x-subrip" required disabled>
               </label>
               <label for="referenceOffset">Time offset (seconds)
-                <input id="referenceOffset" name="offsetSeconds" type="number" step="0.001" value="0">
+                <input id="referenceOffset" name="offsetSeconds" type="number" step="0.001" value="0" disabled>
                 <span class="field-help">Positive shifts cues later; negative shifts them earlier.</span>
               </label>
-              <button id="attachReference" class="btn btn-secondary" type="submit">Attach reference</button>
+              <button id="attachReference" class="btn btn-secondary" type="submit" disabled>Attach reference</button>
             </form>
-            <p id="referenceUploadStatus" class="reference-upload-status" role="status" aria-live="polite"></p>
+            <p id="referenceLoadStatus" class="reference-load-status" role="status" aria-live="polite"></p>
           </section>
         </section>
       </aside>

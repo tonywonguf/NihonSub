@@ -46,7 +46,7 @@ const referenceStatus = document.getElementById('referenceStatus');
 const referenceForm = document.getElementById('referenceForm');
 const referenceFile = document.getElementById('referenceFile');
 const referenceOffset = document.getElementById('referenceOffset');
-const referenceUploadStatus = document.getElementById('referenceUploadStatus');
+const referenceLoadStatus = document.getElementById('referenceLoadStatus');
 const attachReference = document.getElementById('attachReference');
 const playbackTrack = document.getElementById('playbackTrack');
 const referenceTrackOption = playbackTrack.querySelector('option[value="reference"]');
@@ -58,6 +58,8 @@ let activeDecisionView = new URLSearchParams(location.search).get('view') === 'h
 let aSegments = [];
 let bSegments = [];
 let referenceSegments = [];
+let referenceSource = null;
+let referenceLoadVersion = 0;
 let selectionVersion = 0;
 
 async function fetchJson(url, options) {
@@ -305,6 +307,11 @@ function updatePlayback() {
 }
 
 function clearComparison() {
+  referenceLoadVersion++;
+  referenceSource = null;
+  referenceFile.value = '';
+  referenceFile.disabled = true;
+  attachReference.disabled = true;
   aSegments = [];
   bSegments = [];
   referenceSegments = [];
@@ -318,10 +325,10 @@ function clearComparison() {
   trackReferenceColumn.hidden = true;
   referenceTrackOption.disabled = true;
   playbackTrack.value = 'both';
-  referenceStatus.textContent = 'No reference attached.';
-  referenceFile.value = '';
+  referenceStatus.textContent = 'Checking the source video…';
   referenceOffset.value = '0';
-  referenceUploadStatus.textContent = '';
+  referenceOffset.disabled = true;
+  referenceLoadStatus.textContent = '';
   transcriptStatus.textContent = '';
   captionA.hidden = true;
   captionB.hidden = true;
@@ -333,9 +340,63 @@ function clearComparison() {
   reviewVideo.removeAttribute('src');
   reviewVideo.load();
   videoMessage.classList.remove('hidden');
-  videoMessage.textContent = 'Loading the saved video and subtitle tracks…';
+  videoMessage.textContent = 'Select an experiment to load its video and subtitle tracks.';
   videoDuration.textContent = '--:--.--';
   timePlayhead.style.left = '0%';
+}
+
+function renderReferenceTrack(segments, available) {
+  referenceSegments = Array.isArray(segments) ? segments : [];
+  trackReferenceColumn.hidden = !available;
+  transcriptGrid.classList.toggle('has-reference', available);
+  referenceTrackOption.disabled = !available || referenceSegments.length === 0;
+  countReference.textContent = `${referenceSegments.length} ${referenceSegments.length === 1 ? 'cue' : 'cues'}`;
+  renderTrack(trackReferenceList, referenceSegments, 'Reference');
+  updatePlayback();
+}
+
+async function loadEmbeddedReference(runId, selection) {
+  const requestVersion = ++referenceLoadVersion;
+  const params = new URLSearchParams({ offsetSeconds: referenceOffset.value || '0' });
+  referenceSource = 'embedded';
+  referenceStatus.textContent = 'Reading embedded subtitle tracks…';
+  referenceLoadStatus.textContent = '';
+
+  const data = await fetchJson(`/api/runs/${encodeURIComponent(runId)}/embedded-reference?${params}`);
+  if (selection !== selectionVersion || requestVersion !== referenceLoadVersion) return;
+
+  if (!data.available || !data.selectedTrack) {
+    referenceSource = null;
+    renderReferenceTrack([], false);
+    referenceStatus.textContent = data.message || 'No embedded subtitle track available.';
+    return;
+  }
+
+  referenceOffset.disabled = false;
+  referenceOffset.value = String(data.offsetSeconds ?? 0);
+  renderReferenceTrack(data.segments, true);
+  const language = data.selectedTrack.language || 'unknown language';
+  const title = data.selectedTrack.title ? ` · ${data.selectedTrack.title}` : '';
+  const defaultLabel = data.selectedTrack.default ? ' · default' : '';
+  referenceStatus.textContent = `${language}${title}${defaultLabel} · ${referenceSegments.length} cues`;
+}
+
+function showStoredReference(reference) {
+  referenceSource = 'uploaded';
+  referenceOffset.disabled = false;
+  referenceOffset.value = String(reference.offsetSeconds ?? 0);
+  renderReferenceTrack(reference.segments, true);
+  const offset = Number(reference.offsetSeconds || 0);
+  const signedOffset = `${offset >= 0 ? '+' : ''}${offset}s`;
+  referenceStatus.textContent = `${reference.fileName || 'Reference file'} · ${referenceSegments.length} cues · offset ${signedOffset}`;
+}
+
+function showReferenceError(error, selection) {
+  if (selection !== selectionVersion) return;
+  referenceSource = null;
+  renderReferenceTrack([], false);
+  referenceStatus.textContent = 'Embedded subtitles could not be loaded.';
+  referenceLoadStatus.textContent = error.message;
 }
 
 async function selectExperiment(run) {
@@ -345,6 +406,9 @@ async function selectExperiment(run) {
   renderExperimentList();
   selectedExperiment.classList.remove('hidden');
   clearComparison();
+  referenceOffset.disabled = false;
+  referenceFile.disabled = false;
+  attachReference.disabled = false;
   renderDecisionPanel(run);
   decisionStatus.textContent = '';
   decisionStatus.classList.remove('is-error');
@@ -374,14 +438,6 @@ async function selectExperiment(run) {
 
     aSegments = Array.isArray(a.segments) ? a.segments : [];
     bSegments = Array.isArray(b.segments) ? b.segments : [];
-    referenceSegments = Array.isArray(reference?.segments) ? reference.segments : [];
-    trackReferenceColumn.hidden = !reference;
-    transcriptGrid.classList.toggle('has-reference', Boolean(reference));
-    referenceTrackOption.disabled = !reference;
-    referenceOffset.value = String(reference?.offsetSeconds ?? 0);
-    referenceStatus.textContent = reference
-      ? `${reference.fileName || 'Reference file'} · ${referenceSegments.length} cues · offset ${reference.offsetSeconds >= 0 ? '+' : ''}${reference.offsetSeconds}s`
-      : 'No reference attached.';
     const loadedSummary = summarizeExperiment(run, aSegments, bSegments);
     experimentResult.textContent = loadedSummary.result;
     countA.textContent = `${aSegments.length} ${aSegments.length === 1 ? 'cue' : 'cues'}`;
@@ -389,16 +445,23 @@ async function selectExperiment(run) {
     transcriptStatus.textContent = `${aSegments.length} A cues · ${bSegments.length} B cues`;
     renderTrack(trackAList, aSegments, 'A');
     renderTrack(trackBList, bSegments, 'B');
-    countReference.textContent = `${referenceSegments.length} ${referenceSegments.length === 1 ? 'cue' : 'cues'}`;
-    renderTrack(trackReferenceList, referenceSegments, 'Reference');
+    if (reference) showStoredReference(reference);
 
     const videoJobId = run.metadata?.videoJobId;
     if (videoJobId) {
       reviewVideo.controls = true;
       reviewVideo.src = `/api/stream/${encodeURIComponent(videoJobId)}`;
       reviewVideo.load();
+      if (!reference) {
+        try {
+          await loadEmbeddedReference(run.jobId, version);
+        } catch (referenceError) {
+          showReferenceError(referenceError, version);
+        }
+      }
     } else {
       videoMessage.textContent = 'This experiment has no saved video reference. Its subtitle cues are still available below.';
+      if (!reference) referenceStatus.textContent = 'No source video is available for embedded subtitles.';
     }
     updatePlayback();
     setStatus('');
@@ -425,17 +488,21 @@ async function loadExperiments() {
     if (!runs.length) {
       renderExperimentList();
       selectedExperiment.classList.add('hidden');
+      clearComparison();
       setStatus('');
       return;
     }
 
     const chosen = requestedId
       ? runs.find(run => run.jobId === requestedId)
-      : getVisibleRuns()[0] || runs[0];
+      : getVisibleRuns()[0];
     if (!chosen) {
       renderExperimentList();
       selectedExperiment.classList.add('hidden');
-      setStatus('That saved experiment was not found. Choose one from the list above.');
+      clearComparison();
+      setStatus(requestedId
+        ? 'That saved experiment was not found. Choose one from the list above.'
+        : '');
       return;
     }
     await selectExperiment(chosen);
@@ -523,24 +590,29 @@ referenceForm.addEventListener('submit', async event => {
   formData.append('file', file);
   formData.append('offsetSeconds', referenceOffset.value || '0');
   attachReference.disabled = true;
-  referenceUploadStatus.textContent = 'Attaching reference subtitles…';
+  referenceLoadStatus.textContent = 'Attaching reference subtitles…';
 
   try {
-    const response = await fetch(`/api/runs/${encodeURIComponent(runId)}/reference-subtitles`, {
+    const data = await fetchJson(`/api/runs/${encodeURIComponent(runId)}/reference-subtitles`, {
       method: 'POST',
       body: formData
     });
-    const data = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(data.error || `Request failed (${response.status}).`);
     if (version !== selectionVersion) return;
-
-    await selectExperiment(runs.find(run => run.jobId === runId));
-    referenceUploadStatus.textContent = `${data.fileName} attached for comparison.`;
+    referenceFile.value = '';
+    const run = runs.find(item => item.jobId === runId);
+    if (run) await selectExperiment(run);
+    if (activeRunId === runId) referenceLoadStatus.textContent = `${data.fileName} attached for comparison.`;
   } catch (error) {
-    if (version === selectionVersion) referenceUploadStatus.textContent = error.message;
+    if (version === selectionVersion) referenceLoadStatus.textContent = error.message;
   } finally {
-    attachReference.disabled = false;
+    attachReference.disabled = !activeRunId;
   }
+});
+
+referenceOffset.addEventListener('change', () => {
+  if (!activeRunId || referenceOffset.disabled || referenceSource !== 'embedded') return;
+  loadEmbeddedReference(activeRunId, selectionVersion)
+    .catch(error => showReferenceError(error, selectionVersion));
 });
 
 reviewVideo.addEventListener('timeupdate', updatePlayback);

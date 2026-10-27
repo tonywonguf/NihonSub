@@ -1,7 +1,26 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { parseReferenceSubtitles } from '../referenceSubtitles.js';
+import { chooseDefaultSubtitleTrack, parseReferenceSubtitles } from '../referenceSubtitles.js';
+
+test('selects the default English embedded subtitle track before other languages', () => {
+  const selected = chooseDefaultSubtitleTrack([
+    { index: 1, language: 'jpn', default: true },
+    { index: 13, language: 'eng', title: '', default: true },
+    { index: 14, language: 'eng', title: 'Forced', default: false }
+  ]);
+
+  assert.equal(selected.index, 13);
+});
+
+test('falls back to the container default when no English track is tagged', () => {
+  const selected = chooseDefaultSubtitleTrack([
+    { index: 2, language: 'fra', default: false },
+    { index: 4, language: '', title: '', default: true }
+  ]);
+
+  assert.equal(selected.index, 4);
+});
 
 test('parses SRT cues and applies a time offset without losing cue text', () => {
   const cues = parseReferenceSubtitles('\uFEFF1\r\n00:00:08,500 --> 00:00:10,200\r\n<i>Reference &amp; context</i>\r\n', {
@@ -17,6 +36,16 @@ test('parses WebVTT cues with settings and drops cues before the shifted clip', 
   });
 
   assert.deepEqual(cues, [{ id: 0, start: 0, end: 1, text: 'Later cue' }]);
+});
+
+test('rejects cues whose end is not after their start', () => {
+  assert.throws(() => parseReferenceSubtitles('00:00:02,000 --> 00:00:01,000\nReversed cue'), /Invalid subtitle timing/);
+});
+
+test('returns no cues when a valid offset moves every cue outside the clip', () => {
+  assert.deepEqual(parseReferenceSubtitles('00:00:01,000 --> 00:00:02,000\nOutside clip', {
+    offsetSeconds: -5
+  }), []);
 });
 
 test('rejects invalid offsets, oversized files, and files without valid subtitle cues', () => {
