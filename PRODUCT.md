@@ -2,30 +2,32 @@
 
 <!-- impeccable:product-schema 1 -->
 
-## Platform
+## Identity
 
-web
+NihonSub is an independently maintained, local-first Japanese-to-English subtitle creation and review tool. It began as a fork of [Abhishantpadam/NihonSub](https://github.com/Abhishantpadam/NihonSub); this repository's current product direction is its own.
 
-## Users
+## Platform and users
 
-The primary user is the owner, using NihonSub as a personal subtitling tool. It is an MVP, not currently intended for distribution to other users; broader use is a distant possibility.
+- **Platform:** Local web application.
+- **Primary user:** The owner, using it as a personal subtitling and review workspace.
+- **Scope:** Short Japanese clips are the current working use case; longer videos are a future goal.
 
-## Product Purpose
+## Product purpose
 
-Create and review Japanese-to-English subtitles for video, using short clips to check that subtitle wording and context are right before expanding to longer-form videos.
+Create timestamped English subtitles from Japanese dialogue, review them against the source video, and compare alternate subtitle outputs without losing the baseline.
 
-## Positioning
+## Core workflow
 
-The workflow combines Japanese transcription and translation with video review and saved A/B experiments, so the owner can assess subtitle wording against the source video.
+1. Upload a Japanese video.
+2. Transcribe Japanese dialogue and translate it to English.
+3. Review English, Japanese, or bilingual subtitles in a synchronized player with searchable transcript cues.
+4. Adjust caption presentation and timing; export SRT or WebVTT.
+5. Revisit saved A/B experiments, compare aligned baseline and candidate cues, and use embedded reference subtitles when available.
 
-## Operating Context
+## Product principles and constraints
 
-The current test case is about one-minute videos. Longer-form video support is a future goal, not the current MVP target.
-
-## Capabilities and Constraints
-
-- Parakeet's Japanese transcript and timestamps are authoritative; visual context must not override dialogue.
-- Local models are preferred. The current workflow uses local Parakeet transcription and Qwen translation.
-- A/B experiments keep the baseline separate and display both subtitle tracks synchronized to the same video. The comparison landing page is cinema-first, with both overlays visible and the aligned transcript below.
-- Every saved experiment remains discoverable and explains what it tests, why, and the before/after subtitle outputs.
-- The user confirmed the current core workflow is accurate.
+- Local models are the defaults: Parakeet for Japanese transcription and Qwen through Ollama for translation. Compatible providers can be configured.
+- The Japanese transcript and timestamps are the dialogue source of truth; visual context must not override what was spoken.
+- An A/B experiment isolates the intended change where possible, keeps the baseline visible, and reports differences without asserting that one candidate is objectively better.
+- Saved experiments explain what changed, why, and the before/after outputs.
+- NihonSub is currently a personal tool, not a hosted multi-user service.
