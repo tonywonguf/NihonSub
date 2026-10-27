@@ -14,6 +14,8 @@ test('run log and Japanese checkpoint survive store restart', () => {
     store.start('job-123', { videoFileName: 'video.mkv', transcriptionModel: 'parakeet' });
     store.append('job-123', { type: 'progress', step: 'transcribe', message: 'Parakeet complete' });
     store.saveCheckpoint('job-123', 'japanese', { segments });
+    const decisions = [{ choice: 'current', decidedAt: '2026-10-27T12:00:00.000Z' }];
+    store.saveCheckpoint('job-123', 'ab_decisions', decisions);
     store.append('job-123', { type: 'error', step: 'translate', error: 'Qwen unavailable' });
 
     const restartedStore = createRunStore(directory);
@@ -22,6 +24,7 @@ test('run log and Japanese checkpoint survive store restart', () => {
     assert.equal(run.lastStep, 'translate');
     assert.deepEqual(run.events.map(event => event.message), ['Parakeet complete', 'Qwen unavailable']);
     assert.deepEqual(restartedStore.loadCheckpoint('job-123', 'japanese'), { segments });
+    assert.deepEqual(restartedStore.loadCheckpoint('job-123', 'ab_decisions'), decisions);
     assert.equal(restartedStore.list()[0].jobId, 'job-123');
   } finally {
     rmSync(directory, { recursive: true, force: true });

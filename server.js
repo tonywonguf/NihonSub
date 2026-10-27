@@ -27,6 +27,7 @@ import {
 import { extractOriginalAudio, prepareTranscriptionAudio, getAudioMetadata, splitAudioAtSilence } from './audioExtractor.js';
 import { saveSubtitles, generateBilingualSegments, parseVttToSegments } from './subtitleGenerator.js';
 import { createRunStore } from './runStore.js';
+import { appendExperimentDecision } from './experimentDecisions.js';
 import { parseReferenceSubtitles } from './referenceSubtitles.js';
 
 dotenv.config();
@@ -299,7 +300,8 @@ app.get('/api/runs', (req, res) => {
     runs: runStore.list().map(({ events, ...run }) => ({
       ...run,
       eventCount: events.length,
-      checkpoints: Object.keys(run.checkpoints || {})
+      checkpoints: Object.keys(run.checkpoints || {}),
+      decisions: runStore.loadCheckpoint(run.jobId, 'ab_decisions') || []
     }))
   });
 });
@@ -321,6 +323,21 @@ app.get('/api/runs/:jobId/checkpoint/:name', (req, res) => {
     return res.json(checkpoint);
   } catch (err) {
     return res.status(400).json({ error: err.message });
+  }
+});
+
+app.post('/api/runs/:jobId/decision', (req, res) => {
+  try {
+    const run = runStore.get(req.params.jobId);
+    if (!run) return res.status(404).json({ error: 'Run not found.' });
+    if (run.metadata?.kind !== 'ab-test') return res.status(400).json({ error: 'Decisions are only available for A/B experiments.' });
+
+    const previous = runStore.loadCheckpoint(req.params.jobId, 'ab_decisions') || [];
+    const decisions = appendExperimentDecision(previous, req.body?.choice);
+    runStore.saveCheckpoint(req.params.jobId, 'ab_decisions', decisions);
+    return res.json({ decisions });
+  } catch (error) {
+    return res.status(400).json({ error: error.message || 'Could not save the decision.' });
   }
 });
 

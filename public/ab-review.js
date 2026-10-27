@@ -2,6 +2,15 @@ import { formatTime, getActiveCue, summarizeExperiment } from './ab-review-data.
 
 const experimentList = document.getElementById('experimentList');
 const experimentCount = document.getElementById('experimentCount');
+const reviewQueueButton = document.getElementById('reviewQueueButton');
+const decisionArchiveButton = document.getElementById('decisionArchiveButton');
+const reviewQueueCount = document.getElementById('reviewQueueCount');
+const decisionArchiveCount = document.getElementById('decisionArchiveCount');
+const decisionState = document.getElementById('decisionState');
+const decisionSummary = document.getElementById('decisionSummary');
+const decisionHistoryList = document.getElementById('decisionHistoryList');
+const decisionStatus = document.getElementById('decisionStatus');
+const decisionButtons = [...document.querySelectorAll('[data-decision]')];
 const pageStatus = document.getElementById('pageStatus');
 const selectedExperiment = document.getElementById('selectedExperiment');
 const selectedTitle = document.getElementById('selectedTitle');
@@ -45,13 +54,14 @@ const transcriptStatus = document.getElementById('transcriptStatus');
 
 let runs = [];
 let activeRunId = null;
+let activeDecisionView = new URLSearchParams(location.search).get('view') === 'history' ? 'archive' : 'pending';
 let aSegments = [];
 let bSegments = [];
 let referenceSegments = [];
 let selectionVersion = 0;
 
-async function fetchJson(url) {
-  const response = await fetch(url);
+async function fetchJson(url, options) {
+  const response = await fetch(url, options);
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
     const error = new Error(data.error || `Request failed (${response.status}).`);
@@ -65,14 +75,55 @@ function setStatus(message = '') {
   pageStatus.textContent = message;
 }
 
+function updateReviewUrl() {
+  const params = new URLSearchParams();
+  if (activeRunId) params.set('runId', activeRunId);
+  if (activeDecisionView === 'archive') params.set('view', 'history');
+  history.replaceState(null, '', `${location.pathname}${params.size ? `?${params}` : ''}`);
+}
+
 function formatDate(value) {
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? 'Saved run' : date.toLocaleDateString();
 }
 
+function formatDecisionDate(value) {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? 'Unknown time' : date.toLocaleString(undefined, {
+    dateStyle: 'medium',
+    timeStyle: 'short'
+  });
+}
+
+function getDecisions(run) {
+  return Array.isArray(run.decisions) ? run.decisions : [];
+}
+
+function getDecisionLabel(choice) {
+  return ({ current: 'Make candidate current', archive: 'Archive candidate' })[choice] || 'Unknown decision';
+}
+
+function getVisibleRuns() {
+  return runs.filter(run => activeDecisionView === 'pending'
+    ? getDecisions(run).length === 0
+    : getDecisions(run).length > 0)
+    .sort((a, b) => {
+      const aDate = activeDecisionView === 'archive' ? getDecisions(a).at(-1).decidedAt : a.startedAt;
+      const bDate = activeDecisionView === 'archive' ? getDecisions(b).at(-1).decidedAt : b.startedAt;
+      return bDate.localeCompare(aDate);
+    });
+}
+
 function renderExperimentList() {
+  const pending = runs.filter(run => getDecisions(run).length === 0).length;
+  const archived = runs.length - pending;
+  const visibleRuns = getVisibleRuns();
   experimentList.replaceChildren();
-  experimentCount.textContent = `${runs.length} saved`;
+  experimentCount.textContent = `${runs.length} total`;
+  reviewQueueCount.textContent = String(pending);
+  decisionArchiveCount.textContent = String(archived);
+  reviewQueueButton.setAttribute('aria-pressed', String(activeDecisionView === 'pending'));
+  decisionArchiveButton.setAttribute('aria-pressed', String(activeDecisionView === 'archive'));
 
   if (!runs.length) {
     const empty = document.createElement('div');
@@ -88,8 +139,22 @@ function renderExperimentList() {
     return;
   }
 
-  for (const run of runs) {
+  if (!visibleRuns.length) {
+    const empty = document.createElement('div');
+    empty.className = 'empty-library';
+    const message = document.createElement('p');
+    message.textContent = activeDecisionView === 'pending'
+      ? 'You’re all caught up. New experiments will appear here until reviewed.'
+      : 'No decisions archived yet. Review an experiment to record one.';
+    empty.appendChild(message);
+    experimentList.appendChild(empty);
+    return;
+  }
+
+  for (const run of visibleRuns) {
     const summary = summarizeExperiment(run);
+    const decisions = getDecisions(run);
+    const latestDecision = decisions.at(-1);
     const button = document.createElement('button');
     button.type = 'button';
     button.className = 'experiment-option';
@@ -108,22 +173,60 @@ function renderExperimentList() {
 
     const state = document.createElement('span');
     state.className = 'option-state';
-    state.textContent = run.status || 'saved';
+    state.textContent = latestDecision
+      ? latestDecision.choice === 'current' ? 'Current' : 'Archived'
+      : 'Needs review';
 
-    const copy = document.createElement('span');
-    copy.className = 'option-copy';
-    for (const [label, value] of [['What', summary.what], ['Why', summary.why]]) {
-      const line = document.createElement('p');
-      const strong = document.createElement('strong');
-      strong.textContent = `${label}: `;
-      line.append(strong, document.createTextNode(value));
-      copy.appendChild(line);
+    button.append(titleRow, state);
+    if (latestDecision) {
+      const outcome = document.createElement('span');
+      outcome.className = 'option-outcome';
+      const label = document.createElement('span');
+      label.textContent = decisions.length > 1 ? `${decisions.length} decisions · latest: ${getDecisionLabel(latestDecision.choice)}` : getDecisionLabel(latestDecision.choice);
+      const timestamp = document.createElement('time');
+      timestamp.dateTime = latestDecision.decidedAt;
+      timestamp.textContent = formatDecisionDate(latestDecision.decidedAt);
+      outcome.append(label, timestamp);
+      button.appendChild(outcome);
+    } else {
+      const copy = document.createElement('span');
+      copy.className = 'option-copy';
+      for (const [label, value] of [['What', summary.what], ['Why', summary.why]]) {
+        const line = document.createElement('p');
+        const strong = document.createElement('strong');
+        strong.textContent = `${label}: `;
+        line.append(strong, document.createTextNode(value));
+        copy.appendChild(line);
+      }
+      button.appendChild(copy);
     }
 
-    button.append(titleRow, state, copy);
     button.addEventListener('click', () => selectExperiment(run));
     experimentList.appendChild(button);
   }
+}
+
+function renderDecisionPanel(run) {
+  const decisions = getDecisions(run);
+  const latestDecision = decisions.at(-1);
+  decisionState.textContent = latestDecision ? 'Decision recorded' : 'Needs review';
+  decisionState.classList.toggle('is-decided', Boolean(latestDecision));
+  decisionSummary.textContent = latestDecision
+    ? `${getDecisionLabel(latestDecision.choice)} · ${formatDecisionDate(latestDecision.decidedAt)}${decisions.length > 1 ? ` · ${decisions.length} decisions recorded` : ''}`
+    : 'Watch both subtitle tracks, then record the outcome.';
+  decisionHistoryList.replaceChildren();
+  decisionHistoryList.hidden = decisions.length === 0;
+
+  [...decisions].reverse().forEach((decision, index) => {
+    const row = document.createElement('li');
+    const label = document.createElement('span');
+    label.textContent = `${index === 0 ? 'Latest' : 'Previous'} · ${getDecisionLabel(decision.choice)}`;
+    const timestamp = document.createElement('time');
+    timestamp.dateTime = decision.decidedAt;
+    timestamp.textContent = formatDecisionDate(decision.decidedAt);
+    row.append(label, timestamp);
+    decisionHistoryList.appendChild(row);
+  });
 }
 
 function renderTrack(list, segments, track) {
@@ -234,9 +337,13 @@ function clearComparison() {
 async function selectExperiment(run) {
   const version = ++selectionVersion;
   activeRunId = run.jobId;
+  activeDecisionView = getDecisions(run).length ? 'archive' : 'pending';
   renderExperimentList();
   selectedExperiment.classList.remove('hidden');
   clearComparison();
+  renderDecisionPanel(run);
+  decisionStatus.textContent = '';
+  decisionStatus.classList.remove('is-error');
 
   const summary = summarizeExperiment(run);
   selectedTitle.textContent = summary.title;
@@ -247,7 +354,7 @@ async function selectExperiment(run) {
   experimentBeforeAfter.textContent = `${summary.before} ${summary.after}`;
   experimentResult.textContent = summary.result;
   setStatus('Loading saved outputs…');
-  history.replaceState(null, '', `?runId=${encodeURIComponent(run.jobId)}`);
+  updateReviewUrl();
 
   try {
     const runId = encodeURIComponent(run.jobId);
@@ -310,9 +417,9 @@ async function loadExperiments() {
     runs = (data.runs || [])
       .filter(run => run.metadata?.kind === 'ab-test')
       .sort((a, b) => new Date(b.startedAt) - new Date(a.startedAt));
-    renderExperimentList();
 
     if (!runs.length) {
+      renderExperimentList();
       selectedExperiment.classList.add('hidden');
       setStatus('');
       return;
@@ -320,8 +427,9 @@ async function loadExperiments() {
 
     const chosen = requestedId
       ? runs.find(run => run.jobId === requestedId)
-      : runs[0];
+      : getVisibleRuns()[0] || runs[0];
     if (!chosen) {
+      renderExperimentList();
       selectedExperiment.classList.add('hidden');
       setStatus('That saved experiment was not found. Choose one from the list above.');
       return;
@@ -345,6 +453,59 @@ for (const list of [trackAList, trackBList, trackReferenceList]) {
     updatePlayback();
   });
 }
+
+async function switchDecisionView(view) {
+  activeDecisionView = view;
+  const visibleRuns = getVisibleRuns();
+  renderExperimentList();
+  if (visibleRuns.some(run => run.jobId === activeRunId)) {
+    updateReviewUrl();
+    return;
+  }
+  if (visibleRuns[0]) {
+    await selectExperiment(visibleRuns[0]);
+    return;
+  }
+  activeRunId = null;
+  selectedExperiment.classList.add('hidden');
+  clearComparison();
+  updateReviewUrl();
+}
+
+async function saveDecision(choice) {
+  if (!activeRunId) return;
+  const runId = activeRunId;
+  decisionButtons.forEach(button => { button.disabled = true; });
+  decisionStatus.classList.remove('is-error');
+  decisionStatus.textContent = 'Saving decision…';
+
+  try {
+    const data = await fetchJson(`/api/runs/${encodeURIComponent(runId)}/decision`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ choice })
+    });
+    runs = runs.map(run => run.jobId === runId ? { ...run, decisions: data.decisions } : run);
+    if (activeRunId === runId) {
+      activeDecisionView = 'archive';
+      renderDecisionPanel(runs.find(run => run.jobId === runId));
+      updateReviewUrl();
+      decisionStatus.textContent = 'Decision saved. Earlier timestamps are preserved.';
+    }
+    renderExperimentList();
+  } catch (error) {
+    if (activeRunId === runId) {
+      decisionStatus.classList.add('is-error');
+      decisionStatus.textContent = `Decision was not saved: ${error.message}`;
+    }
+  } finally {
+    decisionButtons.forEach(button => { button.disabled = false; });
+  }
+}
+
+reviewQueueButton.addEventListener('click', () => switchDecisionView('pending'));
+decisionArchiveButton.addEventListener('click', () => switchDecisionView('archive'));
+decisionButtons.forEach(button => button.addEventListener('click', () => saveDecision(button.dataset.decision)));
 
 playbackTrack.addEventListener('change', updatePlayback);
 referenceForm.addEventListener('submit', async event => {
