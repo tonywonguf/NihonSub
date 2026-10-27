@@ -100,7 +100,13 @@ function getDecisions(run) {
 }
 
 function getDecisionLabel(choice) {
-  return ({ current: 'Make candidate current', archive: 'Archive candidate' })[choice] || 'Unknown decision';
+  return ({
+    'keep-a': 'Keep A',
+    'use-b': 'Use candidate B',
+    inconclusive: 'Inconclusive',
+    current: 'Use candidate B',
+    archive: 'Keep A'
+  })[choice] || 'Unknown decision';
 }
 
 function getVisibleRuns() {
@@ -173,9 +179,7 @@ function renderExperimentList() {
 
     const state = document.createElement('span');
     state.className = 'option-state';
-    state.textContent = latestDecision
-      ? latestDecision.choice === 'current' ? 'Current' : 'Archived'
-      : 'Needs review';
+    state.textContent = latestDecision ? getDecisionLabel(latestDecision.choice) : 'Needs review';
 
     button.append(titleRow, state);
     if (latestDecision) {

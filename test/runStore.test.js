@@ -14,7 +14,7 @@ test('run log and Japanese checkpoint survive store restart', () => {
     store.start('job-123', { videoFileName: 'video.mkv', transcriptionModel: 'parakeet' });
     store.append('job-123', { type: 'progress', step: 'transcribe', message: 'Parakeet complete' });
     store.saveCheckpoint('job-123', 'japanese', { segments });
-    const decisions = [{ choice: 'current', decidedAt: '2026-10-27T12:00:00.000Z' }];
+    const decisions = [{ choice: 'use-b', decidedAt: '2026-10-27T12:00:00.000Z' }];
     store.saveCheckpoint('job-123', 'ab_decisions', decisions);
     store.append('job-123', { type: 'error', step: 'translate', error: 'Qwen unavailable' });
 

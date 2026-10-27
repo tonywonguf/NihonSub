@@ -1,4 +1,4 @@
-const DECISION_CHOICES = new Set(['current', 'archive']);
+const DECISION_CHOICES = new Set(['keep-a', 'use-b', 'inconclusive', 'current', 'archive']);
 
 function isValidDecision(decision) {
   return decision && DECISION_CHOICES.has(decision.choice) &&
